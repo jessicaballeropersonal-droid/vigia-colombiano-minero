@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor ANM — Acceso</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #0a0e1a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+
+  .brand { text-align: center; margin-bottom: 2rem; }
+  .brand-logo {
+    width: 56px; height: 56px;
+    background: #1d6fa4;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px;
+    margin: 0 auto 0.75rem;
+  }
+  .brand h1 { font-size: 1.3rem; font-weight: 700; color: #fff; }
+  .brand p { font-size: 0.78rem; color: #64748b; margin-top: 0.2rem; }
+
+  .card {
+    background: #111827;
+    border: 1px solid #1e293b;
+    border-radius: 16px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 400px;
+  }
+
+  .tabs { display: flex; gap: 0.4rem; margin-bottom: 1.5rem; background: #0f172a; border-radius: 10px; padding: 4px; }
+  .tab-btn {
+    flex: 1; padding: 0.5rem; border-radius: 8px; border: none;
+    font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    transition: all 0.2s; color: #64748b; background: transparent;
+  }
+  .tab-btn.active { background: #1e3a5f; color: #93c5fd; }
+
+  .form-section { display: none; }
+  .form-section.active { display: block; }
+
+  .form-group { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
+  .form-label { font-size: 0.78rem; color: #64748b; }
+  .form-input {
+    background: #0f172a; border: 1px solid #1e293b;
+    border-radius: 8px; padding: 0.7rem 0.9rem;
+    color: #e2e8f0; font-size: 0.9rem; outline: none;
+    transition: border-color 0.2s; width: 100%;
+  }
+  .form-input:focus { border-color: #3b82f6; }
+  .form-input::placeholder { color: #334155; }
+
+  .phone-row { display: flex; gap: 0.5rem; }
+  .country-code {
+    background: #0f172a; border: 1px solid #1e293b;
+    border-radius: 8px; padding: 0.7rem 0.75rem;
+    color: #e2e8f0; font-size: 0.9rem; outline: none;
+    width: 90px; cursor: pointer;
+  }
+
+  .btn {
+    width: 100%; padding: 0.75rem; border-radius: 8px; border: none;
+    font-size: 0.9rem; font-weight: 700; cursor: pointer;
+    transition: all 0.2s; margin-top: 0.25rem;
+  }
+  .btn-primary { background: #1d6fa4; color: #fff; }
+  .btn-primary:hover { background: #2563eb; }
+  .btn-outline {
+    background: transparent; color: #64748b;
+    border: 1px solid #1e293b; font-weight: 500;
+    font-size: 0.82rem; padding: 0.5rem;
+    margin-top: 0.75rem;
+  }
+  .btn-outline:hover { background: #1e293b; color: #94a3b8; }
+
+  .divider { border: none; border-top: 1px solid #1e293b; margin: 1.25rem 0; }
+
+  .hint { font-size: 0.72rem; color: #64748b; line-height: 1.5; margin-top: 0.5rem; }
+  .hint a { color: #3b82f6; cursor: pointer; text-decoration: none; }
+  .hint a:hover { text-decoration: underline; }
+
+  .alert {
+    border-radius: 8px; padding: 0.7rem 0.9rem;
+    font-size: 0.8rem; margin-bottom: 1rem; display: none;
+    border-left: 3px solid;
+  }
+  .alert-error { background: #450a0a; color: #fca5a5; border-color: #dc2626; }
+  .alert-success { background: #052e16; color: #86efac; border-color: #22c55e; }
+  .alert-info { background: #0c1a3a; color: #93c5fd; border-color: #3b82f6; }
+
+  .strength-bar { height: 3px; background: #1e293b; border-radius: 2px; margin-top: 0.4rem; overflow: hidden; }
+  .strength-fill { height: 100%; border-radius: 2px; transition: width 0.3s, background 0.3s; width: 0%; }
+
+  .paso { font-size: 0.72rem; color: #64748b; margin-bottom: 1rem; }
+  .paso span { color: #3b82f6; font-weight: 600; }
+
+  .loader {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  footer { margin-top: 1.5rem; font-size: 0.7rem; color: #334155; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="brand">
+  <div class="brand-logo">⛏</div>
+  <h1>Monitor ANM</h1>
+  <p>Agencia Nacional de Minería · Notificaciones por Avisos</p>
+</div>
+
+<div class="card">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('login')">Iniciar sesión</button>
+    <button class="tab-btn" onclick="switchTab('registro')">Crear cuenta</button>
+  </div>
+
+  <!-- ALERTA GLOBAL -->
+  <div class="alert" id="global-alert"></div>
+
+  <!-- LOGIN -->
+  <div class="form-section active" id="sec-login">
+    <div class="form-group">
+      <label class="form-label">Número de WhatsApp</label>
+      <div class="phone-row">
+        <select class="country-code" id="login-code">
+          <option value="+57">🇨🇴 +57</option>
+          <option value="+1">🇺🇸 +1</option>
+          <option value="+52">🇲🇽 +52</option>
+          <option value="+34">🇪🇸 +34</option>
+          <option value="+54">🇦🇷 +54</option>
+          <option value="+56">🇨🇱 +56</option>
+          <option value="+51">🇵🇪 +51</option>
+          <option value="+58">🇻🇪 +58</option>
+        </select>
+        <input class="form-input" id="login-tel" type="tel" placeholder="300 123 4567" maxlength="15" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Contraseña</label>
+      <input class="form-input" id="login-pass" type="password" placeholder="Tu contraseña" />
+    </div>
+    <button class="btn btn-primary" id="btn-login" onclick="doLogin()">Entrar</button>
+    <hr class="divider">
+    <button class="btn btn-outline" onclick="switchTab('recuperar')">¿Olvidaste tu contraseña? Recupérala por WhatsApp</button>
+  </div>
+
+  <!-- REGISTRO -->
+  <div class="form-section" id="sec-registro">
+    <div class="paso">Paso <span id="paso-num">1</span> de 2</div>
+
+    <!-- PASO 1 -->
+    <div id="reg-paso1">
+      <div class="form-group">
+        <label class="form-label">Tu nombre completo</label>
+        <input class="form-input" id="reg-nombre" type="text" placeholder="Ej: Carlos Pérez" maxlength="60" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Número de WhatsApp</label>
+        <div class="phone-row">
+          <select class="country-code" id="reg-code">
+            <option value="+57">🇨🇴 +57</option>
+            <option value="+1">🇺🇸 +1</option>
+            <option value="+52">🇲🇽 +52</option>
+            <option value="+34">🇪🇸 +34</option>
+            <option value="+54">🇦🇷 +54</option>
+            <option value="+56">🇨🇱 +56</option>
+            <option value="+51">🇵🇪 +51</option>
+            <option value="+58">🇻🇪 +58</option>
+          </select>
+          <input class="form-input" id="reg-tel" type="tel" placeholder="300 123 4567" maxlength="15" />
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="enviarCodigo()">Continuar → Verificar WhatsApp</button>
+      <p class="hint" style="margin-top:0.75rem;">📲 Te enviaremos un código de verificación por WhatsApp al número ingresado.</p>
+    </div>
+
+    <!-- PASO 2 -->
+    <div id="reg-paso2" style="display:none;">
+      <div class="alert alert-info" id="codigo-info" style="display:block;">
+        📲 Se envió un código de 6 dígitos a tu WhatsApp. Ingrésalo abajo.
+      </div>
+      <div class="form-group">
+        <label class="form-label">Código de verificación</label>
+        <input class="form-input" id="reg-codigo" type="text" placeholder="123456" maxlength="6" style="letter-spacing:0.2em;font-size:1.1rem;text-align:center;" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Crea tu contraseña</label>
+        <input class="form-input" id="reg-pass" type="password" placeholder="Mínimo 6 caracteres" oninput="checkStrength()" />
+        <div class="strength-bar"><div class="strength-fill" id="strength-fill"></div></div>
+        <span class="hint" id="strength-text"></span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirma tu contraseña</label>
+        <input class="form-input" id="reg-pass2" type="password" placeholder="Repite la contraseña" />
+      </div>
+      <button class="btn btn-primary" id="btn-registro" onclick="doRegistro()">Crear mi cuenta</button>
+      <button class="btn btn-outline" onclick="volverPaso1()">← Cambiar número</button>
+    </div>
+  </div>
+
+  <!-- RECUPERAR -->
+  <div class="form-section" id="sec-recuperar">
+    <div class="alert alert-info" style="display:block; margin-bottom:1rem;">
+      🔑 Ingresa tu número de WhatsApp registrado. Te enviaremos una contraseña nueva automáticamente.
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tu número de WhatsApp registrado</label>
+      <div class="phone-row">
+        <select class="country-code" id="rec-code">
+          <option value="+57">🇨🇴 +57</option>
+          <option value="+1">🇺🇸 +1</option>
+          <option value="+52">🇲🇽 +52</option>
+          <option value="+34">🇪🇸 +34</option>
+          <option value="+54">🇦🇷 +54</option>
+          <option value="+56">🇨🇱 +56</option>
+          <option value="+51">🇵🇪 +51</option>
+          <option value="+58">🇻🇪 +58</option>
+        </select>
+        <input class="form-input" id="rec-tel" type="tel" placeholder="300 123 4567" maxlength="15" />
+      </div>
+    </div>
+    <button class="btn btn-primary" id="btn-recuperar" onclick="doRecuperar()">Enviar nueva contraseña por WhatsApp</button>
+    <button class="btn btn-outline" onclick="switchTab('login')">← Volver al login</button>
+  </div>
+</div>
+
+<footer>Monitor ANM v1.0 · Agencia Nacional de Minería · Colombia</footer>
+
+<script>
+const BACKEND = 'https://TU-BACKEND-URL.com'; // Cambia esto por tu URL de backend
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.form-section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-' + tab).classList.add('active');
+  if (tab === 'login') document.querySelectorAll('.tab-btn')[0].classList.add('active');
+  if (tab === 'registro') document.querySelectorAll('.tab-btn')[1].classList.add('active');
+  hideAlert();
+}
+
+function showAlert(msg, type = 'error') {
+  const el = document.getElementById('global-alert');
+  el.className = 'alert alert-' + type;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function hideAlert() {
+  document.getElementById('global-alert').style.display = 'none';
+}
+
+function getPhone(codeId, telId) {
+  const code = document.getElementById(codeId).value;
+  const num = document.getElementById(telId).value.replace(/\s/g, '').replace(/^0/, '');
+  return code + num;
+}
+
+function setLoading(btnId, loading, text) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = loading;
+  btn.innerHTML = loading ? `<span class="loader"></span> ${text}` : text;
+}
+
+// ===== LOGIN =====
+async function doLogin() {
+  hideAlert();
+  const phone = getPhone('login-code', 'login-tel');
+  const pass = document.getElementById('login-pass').value;
+  if (!phone || phone.length < 8) return showAlert('Ingresa tu número de WhatsApp.');
+  if (!pass) return showAlert('Ingresa tu contraseña.');
+
+  setLoading('btn-login', true, 'Verificando...');
+  try {
+    const res = await fetch(BACKEND + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, password: pass })
+    });
+    const data = await res.json();
+    if (data.token) {
+      localStorage.setItem('anm_token', data.token);
+      localStorage.setItem('anm_user', JSON.stringify(data.user));
+      window.location.href = 'index.html';
+    } else {
+      showAlert(data.error || 'Número o contraseña incorrectos.');
+    }
+  } catch (e) {
+    showAlert('Error de conexión. Intenta de nuevo.');
+  }
+  setLoading('btn-login', false, 'Entrar');
+}
+
+// ===== REGISTRO - PASO 1 =====
+let codigoEnviado = null;
+
+async function enviarCodigo() {
+  hideAlert();
+  const nombre = document.getElementById('reg-nombre').value.trim();
+  const phone = getPhone('reg-code', 'reg-tel');
+  if (!nombre) return showAlert('Ingresa tu nombre completo.');
+  if (phone.length < 10) return showAlert('Ingresa un número de WhatsApp válido.');
+
+  try {
+    const res = await fetch(BACKEND + '/auth/send-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, nombre })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('reg-paso1').style.display = 'none';
+      document.getElementById('reg-paso2').style.display = 'block';
+      document.getElementById('paso-num').textContent = '2';
+      // En desarrollo: mostrar código en consola
+      if (data.dev_code) codigoEnviado = data.dev_code;
+    } else {
+      showAlert(data.error || 'No se pudo enviar el código. Intenta de nuevo.');
+    }
+  } catch (e) {
+    showAlert('Error de conexión.');
+  }
+}
+
+function volverPaso1() {
+  document.getElementById('reg-paso1').style.display = 'block';
+  document.getElementById('reg-paso2').style.display = 'none';
+  document.getElementById('paso-num').textContent = '1';
+}
+
+// ===== REGISTRO - PASO 2 =====
+function checkStrength() {
+  const pass = document.getElementById('reg-pass').value;
+  const fill = document.getElementById('strength-fill');
+  const text = document.getElementById('strength-text');
+  let score = 0;
+  if (pass.length >= 6) score++;
+  if (pass.length >= 10) score++;
+  if (/[A-Z]/.test(pass)) score++;
+  if (/[0-9]/.test(pass)) score++;
+  if (/[^A-Za-z0-9]/.test(pass)) score++;
+  const levels = [
+    { pct: '20%', color: '#ef4444', label: 'Muy débil' },
+    { pct: '40%', color: '#f97316', label: 'Débil' },
+    { pct: '60%', color: '#f59e0b', label: 'Aceptable' },
+    { pct: '80%', color: '#84cc16', label: 'Buena' },
+    { pct: '100%', color: '#22c55e', label: 'Muy fuerte' },
+  ];
+  const lvl = levels[Math.min(score, 4)];
+  fill.style.width = lvl.pct;
+  fill.style.background = lvl.color;
+  text.textContent = pass.length ? lvl.label : '';
+}
+
+async function doRegistro() {
+  hideAlert();
+  const codigo = document.getElementById('reg-codigo').value.trim();
+  const pass = document.getElementById('reg-pass').value;
+  const pass2 = document.getElementById('reg-pass2').value;
+  const nombre = document.getElementById('reg-nombre').value.trim();
+  const phone = getPhone('reg-code', 'reg-tel');
+
+  if (!codigo || codigo.length !== 6) return showAlert('Ingresa el código de 6 dígitos.');
+  if (pass.length < 6) return showAlert('La contraseña debe tener al menos 6 caracteres.');
+  if (pass !== pass2) return showAlert('Las contraseñas no coinciden.');
+
+  setLoading('btn-registro', true, 'Creando cuenta...');
+  try {
+    const res = await fetch(BACKEND + '/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, nombre, codigo, password: pass })
+    });
+    const data = await res.json();
+    if (data.token) {
+      localStorage.setItem('anm_token', data.token);
+      localStorage.setItem('anm_user', JSON.stringify(data.user));
+      window.location.href = 'index.html';
+    } else {
+      showAlert(data.error || 'Código incorrecto o expirado.');
+    }
+  } catch (e) {
+    showAlert('Error de conexión.');
+  }
+  setLoading('btn-registro', false, 'Crear mi cuenta');
+}
+
+// ===== RECUPERAR CONTRASEÑA =====
+async function doRecuperar() {
+  hideAlert();
+  const phone = getPhone('rec-code', 'rec-tel');
+  if (phone.length < 10) return showAlert('Ingresa tu número de WhatsApp.');
+
+  setLoading('btn-recuperar', true, 'Enviando...');
+  try {
+    const res = await fetch(BACKEND + '/auth/recover', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showAlert('✅ Nueva contraseña enviada a tu WhatsApp. Úsala para iniciar sesión.', 'success');
+      setTimeout(() => switchTab('login'), 3000);
+    } else {
+      showAlert(data.error || 'Número no encontrado en el sistema.');
+    }
+  } catch (e) {
+    showAlert('Error de conexión.');
+  }
+  setLoading('btn-recuperar', false, 'Enviar nueva contraseña por WhatsApp');
+}
+
+// Si ya está logueado, ir directo al dashboard
+if (localStorage.getItem('anm_token')) {
+  window.location.href = 'index.html';
+}
+</script>
+</body>
+</html>
