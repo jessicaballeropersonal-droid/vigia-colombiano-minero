@@ -123,21 +123,20 @@ def generar_password_temporal() -> str:
     return ''.join(random.choices(string.ascii_letters + string.digits, k=10))
 
 def enviar_whatsapp(telefono: str, mensaje: str) -> bool:
-    if not TWILIO_SID or not TWILIO_TOKEN:
-        print(f"[WhatsApp simulado] Para {telefono}: {mensaje}")
-        return True
+    to = telefono if telefono.startswith("whatsapp:") else \
+         f"whatsapp:{telefono if telefono.startswith('+') else '+' + telefono}"
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json"
     try:
-        to = telefono if telefono.startswith("whatsapp:") else \
-             f"whatsapp:{telefono if telefono.startswith('+') else '+' + telefono}"
         r = requests.post(
-            f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json",
+            url,
             auth=(TWILIO_SID, TWILIO_TOKEN),
             data={"From": TWILIO_FROM, "To": to, "Body": mensaje},
             timeout=10
         )
+        print(f"[Twilio] To={to} status={r.status_code} body={r.text[:300]}")
         return r.status_code == 201
     except Exception as e:
-        print(f"Error WhatsApp: {e}")
+        print(f"[Twilio] Exception enviando a {to}: {e}")
         return False
 
 # ===================== AUTH =====================
@@ -155,14 +154,14 @@ async def send_code(body: SendCodeModel):
         "expira_en": expira, "usado": False
     })
 
-    enviar_whatsapp(body.phone,
+    ok = enviar_whatsapp(body.phone,
         f"Monitor ANM - Hola {body.nombre}! Tu código de verificación es: *{codigo}*. "
         f"Válido por 10 minutos. No lo compartas con nadie.")
 
-    resp = {"ok": True}
-    if os.getenv("ENV", "dev") == "dev":
-        resp["dev_code"] = codigo
-    return resp
+    if not ok:
+        raise HTTPException(status_code=502, detail="No se pudo enviar el código por WhatsApp. Verifica el número e intenta de nuevo.")
+
+    return {"ok": True}
 
 @app.post("/auth/register")
 async def register(body: RegisterModel):
