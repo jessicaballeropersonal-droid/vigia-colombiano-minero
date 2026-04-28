@@ -14,8 +14,10 @@ urllib3.disable_warnings()
 # ===================== CONFIG =====================
 SUPABASE_URL  = os.getenv("SUPABASE_URL", "https://xxxx.supabase.co")
 SUPABASE_KEY  = os.getenv("SUPABASE_KEY", "tu-service-role-key")
-CALLMEBOT_KEY = os.getenv("CALLMEBOT_KEY", "")
-ANM_URL       = "https://www.anm.gov.co/notificaciones-por-avisos"
+TWILIO_SID   = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM  = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+ANM_URL      = "https://www.anm.gov.co/notificaciones-por-avisos"
 
 # ===================== SUPABASE REST API =====================
 def _sb_url(table: str) -> str:
@@ -48,16 +50,19 @@ def sb_update(table, filters, data):
 
 # ===================== FUNCIONES =====================
 def enviar_whatsapp(telefono: str, mensaje: str) -> bool:
-    if not CALLMEBOT_KEY:
+    if not TWILIO_SID or not TWILIO_TOKEN:
         print(f"  [WA simulado] → {telefono}: {mensaje[:60]}...")
         return True
     try:
-        r = requests.get(
-            "https://api.callmebot.com/whatsapp.php",
-            params={"phone": telefono, "text": mensaje, "apikey": CALLMEBOT_KEY},
+        to = telefono if telefono.startswith("whatsapp:") else \
+             f"whatsapp:{telefono if telefono.startswith('+') else '+' + telefono}"
+        r = requests.post(
+            f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json",
+            auth=(TWILIO_SID, TWILIO_TOKEN),
+            data={"From": TWILIO_FROM, "To": to, "Body": mensaje},
             timeout=10
         )
-        return r.status_code == 200
+        return r.status_code == 201
     except Exception as e:
         print(f"  Error WhatsApp: {e}")
         return False
