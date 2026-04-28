@@ -1,7 +1,6 @@
 {
   "version": 2,
-  "root": "frontend",
-  "outputDirectory": "frontend",
+"outputDirectory": "frontend",
   "rewrites": [
     { "source": "/login", "destination": "/login.html" },
     { "source": "/(.*)", "destination": "/index.html" }
