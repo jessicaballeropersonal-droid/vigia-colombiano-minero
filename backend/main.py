@@ -22,7 +22,9 @@ SUPABASE_URL    = os.getenv("SUPABASE_URL", "https://xxxx.supabase.co")
 SUPABASE_KEY    = os.getenv("SUPABASE_KEY", "tu-anon-key")
 JWT_SECRET      = os.getenv("JWT_SECRET", "cambia-este-secreto-muy-largo-123!")
 JWT_EXPIRE_DAYS = 30
-CALLMEBOT_KEY   = os.getenv("CALLMEBOT_KEY", "")
+TWILIO_SID      = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_TOKEN    = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM     = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
 ANM_URL         = "https://www.anm.gov.co/notificaciones-por-avisos"
 
 # ===================== SUPABASE REST API =====================
@@ -121,16 +123,19 @@ def generar_password_temporal() -> str:
     return ''.join(random.choices(string.ascii_letters + string.digits, k=10))
 
 def enviar_whatsapp(telefono: str, mensaje: str) -> bool:
-    if not CALLMEBOT_KEY:
+    if not TWILIO_SID or not TWILIO_TOKEN:
         print(f"[WhatsApp simulado] Para {telefono}: {mensaje}")
         return True
     try:
-        r = requests.get(
-            "https://api.callmebot.com/whatsapp.php",
-            params={"phone": telefono, "text": mensaje, "apikey": CALLMEBOT_KEY},
+        to = telefono if telefono.startswith("whatsapp:") else \
+             f"whatsapp:{telefono if telefono.startswith('+') else '+' + telefono}"
+        r = requests.post(
+            f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json",
+            auth=(TWILIO_SID, TWILIO_TOKEN),
+            data={"From": TWILIO_FROM, "To": to, "Body": mensaje},
             timeout=10
         )
-        return r.status_code == 200
+        return r.status_code == 201
     except Exception as e:
         print(f"Error WhatsApp: {e}")
         return False
