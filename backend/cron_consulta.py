@@ -1,13 +1,11 @@
 """
 Monitor ANM - Script de consulta automática
-Ejecutar cada 24 horas con GitHub Actions, Render, PythonAnywhere, etc.
-
-Uso: python cron_consulta.py
+Ejecutar cada 24 horas con GitHub Actions.
+Compatible con Python 3.14+. Sin SDK supabase ni httpx.
 """
 
 import requests
-from supabase import create_client
-from bs4 import BeautifulSoup
+import re
 from datetime import datetime
 import os
 import urllib3
@@ -15,11 +13,38 @@ urllib3.disable_warnings()
 
 # ===================== CONFIG =====================
 SUPABASE_URL  = os.getenv("SUPABASE_URL", "https://xxxx.supabase.co")
-SUPABASE_KEY  = os.getenv("SUPABASE_KEY", "tu-service-role-key")  # Usar service role para cron
+SUPABASE_KEY  = os.getenv("SUPABASE_KEY", "tu-service-role-key")
 CALLMEBOT_KEY = os.getenv("CALLMEBOT_KEY", "")
 ANM_URL       = "https://www.anm.gov.co/notificaciones-por-avisos"
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+# ===================== SUPABASE REST API =====================
+def _sb_url(table: str) -> str:
+    return f"{SUPABASE_URL}/rest/v1/{table}"
+
+def _sb_h(prefer: str = None) -> dict:
+    h = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+    if prefer:
+        h["Prefer"] = prefer
+    return h
+
+def sb_select(table, params):
+    r = requests.get(_sb_url(table), headers=_sb_h(), params=params, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+def sb_insert(table, data):
+    r = requests.post(_sb_url(table), headers=_sb_h("return=representation"), json=data, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+def sb_update(table, filters, data):
+    r = requests.patch(_sb_url(table), headers=_sb_h("return=representation"), json=data, params=filters, timeout=10)
+    r.raise_for_status()
+    return r.json()
 
 # ===================== FUNCIONES =====================
 def enviar_whatsapp(telefono: str, mensaje: str) -> bool:
@@ -27,12 +52,12 @@ def enviar_whatsapp(telefono: str, mensaje: str) -> bool:
         print(f"  [WA simulado] → {telefono}: {mensaje[:60]}...")
         return True
     try:
-        resp = requests.get(
+        r = requests.get(
             "https://api.callmebot.com/whatsapp.php",
             params={"phone": telefono, "text": mensaje, "apikey": CALLMEBOT_KEY},
             timeout=10
         )
-        return resp.status_code == 200
+        return r.status_code == 200
     except Exception as e:
         print(f"  Error WhatsApp: {e}")
         return False
@@ -40,26 +65,25 @@ def enviar_whatsapp(telefono: str, mensaje: str) -> bool:
 def consultar_anm(placa: str) -> dict:
     try:
         session = requests.Session()
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        page = session.get(ANM_URL, headers=headers, verify=False, timeout=15)
-        soup = BeautifulSoup(page.text, "html.parser")
+        hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        page = session.get(ANM_URL, headers=hdrs, verify=False, timeout=15)
 
-        csrf = soup.find("input", {"name": "_token"})
+        m = re.search(r'<input[^>]*name="_token"[^>]*value="([^"]*)"', page.text)
         data = {"numero": placa}
-        if csrf:
-            data["_token"] = csrf.get("value", "")
+        if m:
+            data["_token"] = m.group(1)
 
-        resp = session.post(ANM_URL, data=data, headers=headers, verify=False, timeout=15)
-        resp_soup = BeautifulSoup(resp.text, "html.parser")
-        texto = resp_soup.get_text().lower()
+        resp = session.post(ANM_URL, data=data, headers=hdrs, verify=False, timeout=15)
+        texto = re.sub(r'<[^>]+>', ' ', resp.text).lower()
 
-        tiene = any(kw in texto for kw in ["fecha", "publicacion", "publicación", "notificacion", "aviso"])
+        tiene = any(kw in texto for kw in
+                    ["fecha", "publicacion", "publicación", "notificacion", "aviso"])
 
         fecha = None
-        for tag in resp_soup.find_all(["td", "span", "p", "div"]):
-            t = tag.get_text(strip=True)
-            if any(kw in t.lower() for kw in ["fecha", "publicacion"]) and 5 < len(t) < 100:
-                fecha = t
+        for bloque in re.findall(r'[^<]{5,100}', resp.text):
+            b = bloque.strip()
+            if any(kw in b.lower() for kw in ["fecha", "publicacion", "publicación"]) and len(b) < 100:
+                fecha = b
                 break
 
         return {"tiene": tiene, "fecha": fecha}
@@ -75,47 +99,44 @@ def main():
     print(f"Fecha: {ahora.strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*50}\n")
 
-    # Obtener todas las placas activas de todos los usuarios
-    placas = supabase.table("placas").select("*, usuarios(nombre, telefono)").eq("estado", "activa").execute().data
+    placas = sb_select("placas", {
+        "select": "*, usuarios(nombre, telefono)",
+        "estado": "eq.activa"
+    })
     print(f"Total placas a consultar: {len(placas)}\n")
 
     notificaciones = 0
-
     for p in placas:
         print(f"→ Consultando placa {p['placa']} (propietario: {p['nombre']})...")
         resultado = consultar_anm(p["placa"])
 
         estado = "alerta" if resultado["tiene"] else "activa"
-        supabase.table("placas").update({
+        sb_update("placas", {"id": f"eq.{p['id']}"}, {
             "ultima_consulta": ahora.isoformat(),
             "estado": estado,
             "fecha_notificacion": resultado["fecha"]
-        }).eq("id", p["id"]).execute()
+        })
 
         if resultado["tiene"] and resultado["fecha"]:
             notificaciones += 1
-            print(f"  ✅ NOTIFICACIÓN DETECTADA — Fecha: {resultado['fecha']}")
+            print(f"  NOTIFICACIÓN DETECTADA — Fecha: {resultado['fecha']}")
 
-            # Guardar alerta
-            supabase.table("alertas").insert({
+            sb_insert("alertas", {
                 "usuario_id": p["usuario_id"],
                 "placa": p["placa"],
                 "nombre": p["nombre"],
                 "celular": p["celular"],
                 "fecha_publicacion": resultado["fecha"],
                 "mensaje": f"Notificación ANM — Placa {p['placa']} — Fecha: {resultado['fecha']}"
-            }).execute()
+            })
 
-            # Notificar al propietario de la placa
-            msg_propietario = (
+            enviar_whatsapp(p["celular"], (
                 f"⛏ Monitor ANM - Notificacion!\n"
                 f"Su placa *{p['placa']}* tiene una publicacion en la ANM.\n"
                 f"Fecha: {resultado['fecha']}\n"
                 f"Revisar en: {ANM_URL}"
-            )
-            enviar_whatsapp(p["celular"], msg_propietario)
-            print(f"  📲 WhatsApp enviado a propietario: {p['celular']}")
-
+            ))
+            print(f"  WhatsApp enviado a: {p['celular']}")
         else:
             print(f"  — Sin novedad")
 
