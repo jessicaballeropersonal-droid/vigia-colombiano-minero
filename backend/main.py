@@ -123,6 +123,7 @@ def generar_password_temporal() -> str:
     return ''.join(random.choices(string.ascii_letters + string.digits, k=10))
 
 def enviar_whatsapp(telefono: str, mensaje: str) -> bool:
+    print(f"[Twilio] SID={TWILIO_SID[:5] if TWILIO_SID else 'VACIO'} TOKEN={TWILIO_TOKEN[:5] if TWILIO_TOKEN else 'VACIO'} FROM={TWILIO_FROM}")
     to = telefono if telefono.startswith("whatsapp:") else \
          f"whatsapp:{telefono if telefono.startswith('+') else '+' + telefono}"
     url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json"
