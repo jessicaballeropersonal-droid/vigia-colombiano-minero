@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from passlib.context import CryptContext
+from twilio.rest import Client as TwilioClient
 import random
 import string
 import re
@@ -126,16 +127,11 @@ def enviar_whatsapp(telefono: str, mensaje: str) -> bool:
     print(f"[Twilio] SID={TWILIO_SID[:5] if TWILIO_SID else 'VACIO'} TOKEN={TWILIO_TOKEN[:5] if TWILIO_TOKEN else 'VACIO'} FROM={TWILIO_FROM}")
     to = telefono if telefono.startswith("whatsapp:") else \
          f"whatsapp:{telefono if telefono.startswith('+') else '+' + telefono}"
-    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json"
     try:
-        r = requests.post(
-            url,
-            auth=(TWILIO_SID, TWILIO_TOKEN),
-            data={"From": TWILIO_FROM, "To": to, "Body": mensaje},
-            timeout=10
-        )
-        print(f"[Twilio] To={to} status={r.status_code} body={r.text[:300]}")
-        return r.status_code == 201
+        client = TwilioClient(TWILIO_SID, TWILIO_TOKEN)
+        message = client.messages.create(from_=TWILIO_FROM, to=to, body=mensaje)
+        print(f"[Twilio] To={to} sid={message.sid} status={message.status}")
+        return True
     except Exception as e:
         print(f"[Twilio] Exception enviando a {to}: {e}")
         return False
