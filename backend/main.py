@@ -12,7 +12,7 @@ import random
 import string
 import re
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 import os
 import urllib3
@@ -171,7 +171,7 @@ async def register(body: RegisterModel):
         raise HTTPException(status_code=400, detail="Código incorrecto o ya usado.")
 
     rec = rows[0]
-    if datetime.fromisoformat(rec["expira_en"].replace("Z", "")) < datetime.utcnow():
+    if datetime.fromisoformat(rec["expira_en"].replace("Z", "+00:00")) < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="El código expiró. Solicita uno nuevo.")
 
     sb_update("codigos_verificacion", {"id": f"eq.{rec['id']}"}, {"usado": True})
