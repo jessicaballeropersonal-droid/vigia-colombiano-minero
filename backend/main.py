@@ -125,6 +125,7 @@ def generar_password_temporal() -> str:
 
 def enviar_whatsapp(telefono: str, mensaje: str) -> bool:
     print(f"[Twilio] SID={TWILIO_SID[:5] if TWILIO_SID else 'VACIO'} TOKEN={TWILIO_TOKEN[:5] if TWILIO_TOKEN else 'VACIO'} FROM={TWILIO_FROM}")
+    print(f"[Twilio] Mensaje a enviar: '{mensaje}'")
     to = telefono if telefono.startswith("whatsapp:") else \
          f"whatsapp:{telefono if telefono.startswith('+') else '+' + telefono}"
     try:
