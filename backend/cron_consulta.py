@@ -80,9 +80,16 @@ def consultar_anm(placa: str) -> dict:
 
         resp = session.post(ANM_URL, data=data, headers=hdrs, verify=False, timeout=15)
         texto = re.sub(r'<[^>]+>', ' ', resp.text).lower()
+        placa_norm = placa.strip().lower()
 
-        tiene = any(kw in texto for kw in
-                    ["fecha", "publicacion", "publicación", "notificacion", "aviso"])
+        # Check if the plate appears explicitly in the response (covers comma-separated lists)
+        placa_en_respuesta = bool(re.search(r'(?<![0-9a-z])' + re.escape(placa_norm) + r'(?![0-9a-z])', texto))
+
+        # Also check for notification keywords that indicate a real result row
+        tiene_keywords = any(kw in texto for kw in
+                             ["fecha", "publicacion", "publicación", "notificacion", "aviso"])
+
+        tiene = placa_en_respuesta and tiene_keywords
 
         fecha = None
         for bloque in re.findall(r'[^<]{5,100}', resp.text):
