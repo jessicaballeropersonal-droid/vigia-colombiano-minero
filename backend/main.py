@@ -279,8 +279,35 @@ def consultar_anm(placa: str) -> dict:
         placa_re = re.compile(r'(?<![0-9a-z])' + placa_pattern + r'(?![0-9a-z])')
 
         print(f"[ANM:{placa}] HTTP status: {resp.status_code}")
-        print(f"[ANM:{placa}] HTML crudo (primeros 5000 chars):\n{resp.text[:5000]}")
-        print(f"[ANM:{placa}] Texto plano (primeros 1000 chars):\n{texto[:1000]}")
+        print(f"[ANM:{placa}] Content-Type: {resp.headers.get('Content-Type','')}")
+
+        # Extract script src URLs (external JS files that may contain API calls)
+        scripts_src = re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', resp.text, re.IGNORECASE)
+        print(f"[ANM:{placa}] Scripts externos: {scripts_src}")
+
+        # Extract inline JS snippets containing API patterns
+        inline_scripts = re.findall(r'<script[^>]*>(.*?)</script>', resp.text, re.DOTALL | re.IGNORECASE)
+        for i, s in enumerate(inline_scripts):
+            s = s.strip()
+            if not s:
+                continue
+            # Look for anything that looks like an API call or URL
+            api_hints = re.findall(
+                r'(?:fetch|axios|xhr|xmlhttprequest|url\s*[:=]|endpoint\s*[:=]|api)[^\n]{0,200}',
+                s, re.IGNORECASE
+            )
+            if api_hints:
+                print(f"[ANM:{placa}] Inline script[{i}] API hints: {api_hints}")
+            # Also print any string literals that look like URLs
+            urls = re.findall(r'["\'](?:https?://[^"\']{5,}|/[a-z][^"\']{5,})["\']', s)
+            if urls:
+                print(f"[ANM:{placa}] Inline script[{i}] URLs: {urls[:20]}")
+
+        # Print full inline scripts shorter than 2000 chars (likely config/init blocks)
+        for i, s in enumerate(inline_scripts):
+            s = s.strip()
+            if 0 < len(s) < 2000:
+                print(f"[ANM:{placa}] Inline script[{i}] completo:\n{s}")
 
         # Search in stripped text AND in raw HTML (plate may be inside a tag attribute or table cell)
         placa_en_respuesta = bool(placa_re.search(texto) or placa_re.search(html_lower))
