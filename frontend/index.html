@@ -105,7 +105,7 @@
     <button class="tab active" onclick="showTab('dashboard',this)">Dashboard</button>
     <button class="tab" onclick="showTab('placas',this)">Mis placas</button>
     <button class="tab" onclick="showTab('alertas',this)">Alertas</button>
-    <button class="tab" onclick="showTab('config',this)">Configuración</button>
+    <!-- <button class="tab" onclick="showTab('config',this)">Configuración</button> -->
     <button class="tab" onclick="showTab('cuenta',this)">Mi cuenta</button>
   </div>
 
@@ -160,95 +160,11 @@
     </div>
   </div>
 
-  <!-- CONFIG -->
+  <!-- CONFIG (oculto)
   <div class="section" id="tab-config">
-    <div class="config-tabs">
-      <button class="cfg-tab active" onclick="showCfg('servicios',this)">🔧 Servicios</button>
-      <button class="cfg-tab" onclick="showCfg('sql',this)">⚙️ SQL</button>
-    </div>
-
-    <div class="cfg-section active" id="cfg-servicios">
-      <p style="font-size:0.8rem;color:#64748b;margin-bottom:1.25rem;">Servicios que utiliza esta aplicación. Se configuran mediante variables de entorno en el servidor.</p>
-      <div style="display:grid;gap:1rem;">
-        <div class="service-card">
-          <div style="font-size:1.5rem;flex-shrink:0;">🟩</div>
-          <div>
-            <div style="font-size:0.9rem;font-weight:600;color:#e2e8f0;margin-bottom:0.3rem;">Supabase — Base de datos</div>
-            <div style="font-size:0.78rem;color:#64748b;line-height:1.6;">Base de datos PostgreSQL en la nube. Almacena usuarios, placas y alertas. Configurado con <code style="background:#0a0e1a;padding:0.1rem 0.3rem;border-radius:3px;font-size:0.72rem;">SUPABASE_URL</code> y <code style="background:#0a0e1a;padding:0.1rem 0.3rem;border-radius:3px;font-size:0.72rem;">SUPABASE_KEY</code>.</div>
-          </div>
-          <span style="margin-left:auto;flex-shrink:0;font-size:0.62rem;font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;background:#052e16;color:#22c55e;">ACTIVO</span>
-        </div>
-        <div class="service-card">
-          <div style="font-size:1.5rem;flex-shrink:0;">🤖</div>
-          <div>
-            <div style="font-size:0.9rem;font-weight:600;color:#e2e8f0;margin-bottom:0.3rem;">CallMeBot — Notificaciones WhatsApp</div>
-            <div style="font-size:0.78rem;color:#64748b;line-height:1.6;">Envía alertas por WhatsApp de forma gratuita cuando se detecta una notificación ANM. Configurado con <code style="background:#0a0e1a;padding:0.1rem 0.3rem;border-radius:3px;font-size:0.72rem;">CALLMEBOT_KEY</code>.</div>
-          </div>
-          <span style="margin-left:auto;flex-shrink:0;font-size:0.62rem;font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;background:#052e16;color:#22c55e;">ACTIVO</span>
-        </div>
-        <div class="service-card">
-          <div style="font-size:1.5rem;flex-shrink:0;">🐙</div>
-          <div>
-            <div style="font-size:0.9rem;font-weight:600;color:#e2e8f0;margin-bottom:0.3rem;">GitHub Actions — Consultas automáticas</div>
-            <div style="font-size:0.78rem;color:#64748b;line-height:1.6;">Ejecuta la consulta diaria a la ANM todos los días a las 6:00 a.m. (hora Colombia). No requiere servidor adicional. Configurado en <code style="background:#0a0e1a;padding:0.1rem 0.3rem;border-radius:3px;font-size:0.72rem;">.github/workflows/consulta-diaria.yml</code>.</div>
-          </div>
-          <span style="margin-left:auto;flex-shrink:0;font-size:0.62rem;font-weight:700;padding:0.15rem 0.5rem;border-radius:4px;background:#052e16;color:#22c55e;">ACTIVO</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="cfg-section" id="cfg-sql">
-      <div class="panel" style="margin-bottom:0;">
-        <div class="panel-header"><span class="panel-title">SQL — Crear todas las tablas</span></div>
-        <div class="panel-body">
-          <pre class="sql-box">-- Usuarios
-CREATE TABLE usuarios (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  nombre text NOT NULL,
-  telefono text NOT NULL UNIQUE,
-  password_hash text NOT NULL,
-  creado_en timestamptz DEFAULT now()
-);
-
--- Códigos de verificación WhatsApp
-CREATE TABLE codigos_verificacion (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  telefono text NOT NULL,
-  codigo text NOT NULL,
-  expira_en timestamptz NOT NULL,
-  usado boolean DEFAULT false
-);
-
--- Placas (por usuario)
-CREATE TABLE placas (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  usuario_id uuid REFERENCES usuarios(id) ON DELETE CASCADE,
-  placa text NOT NULL,
-  nombre text NOT NULL,
-  celular text NOT NULL,
-  estado text DEFAULT 'activa',
-  ultima_consulta timestamptz,
-  fecha_notificacion text,
-  creado_en timestamptz DEFAULT now(),
-  UNIQUE(usuario_id, placa)
-);
-
--- Alertas (por usuario)
-CREATE TABLE alertas (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  usuario_id uuid REFERENCES usuarios(id) ON DELETE CASCADE,
-  placa text NOT NULL,
-  nombre text NOT NULL,
-  celular text NOT NULL,
-  fecha_publicacion text,
-  mensaje text,
-  creado_en timestamptz DEFAULT now()
-);</pre>
-          <button class="btn btn-sm" style="margin-top:0.75rem;" onclick="copySql()">📋 Copiar SQL</button>
-        </div>
-      </div>
-    </div>
+    ...
   </div>
+  -->
 
   <!-- MI CUENTA -->
   <div class="section" id="tab-cuenta">
