@@ -72,19 +72,12 @@
   .empty-state p{font-size:0.85rem;margin-top:0.5rem;}
   .progress-bar{height:3px;background:#1e293b;border-radius:2px;overflow:hidden;margin-top:0.5rem;}
   .progress-fill{height:100%;background:#3b82f6;border-radius:2px;transition:width 1s linear;}
-  .config-tabs{display:flex;gap:0.4rem;margin-bottom:1.25rem;border-bottom:1px solid #1e293b;padding-bottom:0.75rem;flex-wrap:wrap;}
-  .cfg-tab{padding:0.4rem 0.9rem;border-radius:6px;font-size:0.78rem;font-weight:500;cursor:pointer;border:1px solid transparent;color:#64748b;background:transparent;transition:all 0.2s;}
-  .cfg-tab.active{background:#1e3a5f;color:#93c5fd;border-color:#1d6fa4;}
-  .cfg-tab:hover:not(.active){background:#1e293b;color:#94a3b8;}
-  .cfg-section{display:none;} .cfg-section.active{display:block;}
-  .service-card{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:1.25rem;display:flex;align-items:flex-start;gap:1rem;}
-  .sql-box{background:#0a0e1a;border:1px solid #1e293b;border-radius:8px;padding:0.85rem;font-size:0.72rem;color:#86efac;overflow-x:auto;line-height:1.6;font-family:monospace;}
   .profile-card{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:1.5rem;display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;}
   .profile-avatar{width:52px;height:52px;border-radius:50%;background:#1e3a5f;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;color:#93c5fd;flex-shrink:0;}
   .profile-name{font-size:1rem;font-weight:600;color:#fff;}
   .profile-phone{font-size:0.78rem;color:#64748b;margin-top:0.2rem;}
   .toast{position:fixed;bottom:1.5rem;right:1.5rem;background:#052e16;border:1px solid #166534;color:#86efac;padding:0.75rem 1.2rem;border-radius:10px;font-size:0.85rem;font-weight:500;display:none;z-index:999;}
-  @media(max-width:600px){.form-grid-4,.grid-3,.field-grid{grid-template-columns:1fr;}}
+  @media(max-width:600px){.form-grid-4,.grid-3{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
@@ -117,7 +110,7 @@
       <div class="stat-card"><div class="card-label">Última consulta</div><div class="card-value green" id="stat-last">—</div><div style="font-size:0.72rem;color:#334155;margin-top:0.3rem;" id="stat-next">próxima: —</div></div>
     </div>
     <div class="panel">
-      <div class="panel-header"><span class="panel-title">Actividad reciente</span><button class="btn btn-sm" onclick="runCheckNow()">↻ Consultar ahora</button></div>
+      <div class="panel-header"><span class="panel-title">Actividad reciente</span><button class="btn btn-sm" id="btn-consultar" onclick="runCheckNow()">↻ Consultar ahora</button></div>
       <div class="panel-body" id="activity-list"><div class="empty-state"><div style="font-size:2rem;">📡</div><p>Sin actividad aún.</p></div></div>
     </div>
     <div class="panel">
@@ -155,7 +148,7 @@
   <!-- ALERTAS -->
   <div class="section" id="tab-alertas">
     <div class="panel">
-      <div class="panel-header"><span class="panel-title">Historial de notificaciones</span><button class="btn btn-sm" onclick="clearAlertas()">Limpiar</button></div>
+      <div class="panel-header"><span class="panel-title">Historial de notificaciones</span></div>
       <div class="panel-body" id="alertas-list"><div class="empty-state"><div style="font-size:2rem;">🔔</div><p>Sin notificaciones aún.</p></div></div>
     </div>
   </div>
@@ -198,173 +191,251 @@
 <script>
 const BACKEND = 'https://vigia-colombiano-minero.onrender.com';
 const token = localStorage.getItem('anm_token');
-const user = JSON.parse(localStorage.getItem('anm_user') || 'null');
+const user  = JSON.parse(localStorage.getItem('anm_user') || 'null');
 if (!token || !user) window.location.href = 'login.html';
+
+const uid = user?.id || 'guest';
 
 function initials(n){ return (n||'?').split(' ').slice(0,2).map(w=>w[0]?.toUpperCase()||'').join(''); }
 function authH(){ return {'Content-Type':'application/json','Authorization':'Bearer '+token}; }
 
+let placas = [];
+let alertas = [];
+let nextCheck = localStorage.getItem('anm_next_'+uid) || null;
+let countdownInterval = null;
+
+// ── USUARIO ──────────────────────────────────────────────
 function loadUser(){
   if(!user) return;
-  const ini=initials(user.nombre);
-  ['hdr-avatar','prof-avatar'].forEach(id=>document.getElementById(id).textContent=ini);
-  document.getElementById('hdr-name').textContent=user.nombre;
-  document.getElementById('prof-name').textContent=user.nombre;
-  document.getElementById('prof-phone').textContent=user.telefono||'—';
+  const ini = initials(user.nombre);
+  ['hdr-avatar','prof-avatar'].forEach(id => document.getElementById(id).textContent = ini);
+  document.getElementById('hdr-name').textContent  = user.nombre;
+  document.getElementById('prof-name').textContent  = user.nombre;
+  document.getElementById('prof-phone').textContent = user.telefono || '—';
 }
 
 function logout(){
-  ['anm_token','anm_user','anm_placas_'+user?.id,'anm_alertas_'+user?.id,'anm_next_'+user?.id].forEach(k=>localStorage.removeItem(k));
-  window.location.href='login.html';
+  ['anm_token','anm_user','anm_next_'+uid].forEach(k => localStorage.removeItem(k));
+  window.location.href = 'login.html';
 }
 
-function showTab(tab,el){
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+function showTab(tab, el){
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('tab-'+tab).classList.add('active');
-  if(tab==='placas') renderPlacasTable();
-  if(tab==='alertas') renderAlertasList();
-}
-function showCfg(sec,el){
-  document.querySelectorAll('.cfg-tab').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.cfg-section').forEach(s=>s.classList.remove('active'));
-  el.classList.add('active');
-  document.getElementById('cfg-'+sec).classList.add('active');
+  if(tab === 'placas')  renderPlacasTable();
+  if(tab === 'alertas') loadAlertas();
 }
 
-// PLACAS
-const uid = user?.id || 'guest';
-let placas = JSON.parse(localStorage.getItem('anm_placas_'+uid)||'[]');
-let alertas = JSON.parse(localStorage.getItem('anm_alertas_'+uid)||'[]');
-let nextCheck = localStorage.getItem('anm_next_'+uid)||null;
-let countdownInterval=null;
-
-function savePlacas(){ localStorage.setItem('anm_placas_'+uid, JSON.stringify(placas)); }
-function saveAlertas(){ localStorage.setItem('anm_alertas_'+uid, JSON.stringify(alertas)); }
-
-function addPlaca(){
-  const placa=document.getElementById('inp-placa').value.trim();
-  const nombre=document.getElementById('inp-nombre').value.trim();
-  const cel=document.getElementById('inp-cel').value.trim();
-  if(!placa||!nombre||!cel) return toast('Completa todos los campos','red');
-  if(placas.find(p=>p.placa===placa)) return toast('Esa placa ya está registrada','red');
-  placas.push({placa,nombre,cel,estado:'activa',ultima:null,fecha_notif:null,id:Date.now()});
-  savePlacas();
-  ['inp-placa','inp-nombre','inp-cel'].forEach(id=>document.getElementById(id).value='');
-  updateStats(); renderPlacasTable();
-  addActivity(`Placa <strong>${placa}</strong> de <strong>${nombre}</strong> agregada`,'info');
-  toast('Placa registrada');
+// ── PLACAS ───────────────────────────────────────────────
+async function loadPlacas(){
+  try {
+    const res = await fetch(BACKEND+'/placas', { headers: authH() });
+    if(!res.ok) throw new Error(await res.text());
+    placas = await res.json();
+    updateStats();
+    renderPlacasTable();
+  } catch(e) {
+    console.error('Error cargando placas:', e);
+    toast('Error cargando placas', 'red');
+  }
 }
 
-function removePlaca(id){
-  placas=placas.filter(p=>p.id!==id); savePlacas(); updateStats(); renderPlacasTable(); toast('Placa eliminada');
+async function addPlaca(){
+  const placa  = document.getElementById('inp-placa').value.trim();
+  const nombre = document.getElementById('inp-nombre').value.trim();
+  const cel    = document.getElementById('inp-cel').value.trim();
+  if(!placa || !nombre || !cel) return toast('Completa todos los campos', 'red');
+  try {
+    const res = await fetch(BACKEND+'/placas', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({ placa, nombre, celular: cel })
+    });
+    const data = await res.json();
+    if(!res.ok) return toast(data.detail || 'Error al agregar placa', 'red');
+    ['inp-placa','inp-nombre','inp-cel'].forEach(id => document.getElementById(id).value = '');
+    await loadPlacas();
+    addActivity(`Placa <strong>${placa}</strong> de <strong>${nombre}</strong> agregada`, 'info');
+    toast('Placa registrada');
+  } catch(e) {
+    toast('Error de conexión', 'red');
+  }
+}
+
+async function removePlaca(id){
+  try {
+    const res = await fetch(BACKEND+'/placas/'+id, { method: 'DELETE', headers: authH() });
+    if(!res.ok){ const d = await res.json(); return toast(d.detail || 'Error al eliminar', 'red'); }
+    await loadPlacas();
+    toast('Placa eliminada');
+  } catch(e) {
+    toast('Error de conexión', 'red');
+  }
 }
 
 function renderPlacasTable(){
-  const wrap=document.getElementById('placas-table-wrap');
-  document.getElementById('placa-count').textContent=placas.length+' registradas';
-  if(!placas.length){wrap.innerHTML='<div class="empty-state"><div style="font-size:2rem;">🔍</div><p>Aún no has agregado ninguna placa.</p></div>';return;}
-  wrap.innerHTML=`<div class="table-wrap"><table><thead><tr><th>Placa</th><th>Propietario</th><th>Estado</th><th>Última consulta</th><th>Fecha notif.</th><th></th></tr></thead><tbody>
-  ${placas.map(p=>`<tr>
-    <td><span class="placa-tag">${p.placa}</span></td>
-    <td><div class="owner-cell"><div class="owner-avatar">${initials(p.nombre)}</div><div><div class="owner-name">${p.nombre}</div><div class="owner-phone">${p.cel}</div></div></div></td>
-    <td><span class="badge ${p.estado==='activa'?'badge-green':p.estado==='alerta'?'badge-amber':'badge-gray'}"><span class="badge-dot"></span>${p.estado}</span></td>
-    <td style="color:#64748b;font-size:0.8rem;">${p.ultima||'—'}</td>
-    <td style="color:${p.fecha_notif?'#f59e0b':'#334155'};font-size:0.8rem;font-weight:${p.fecha_notif?'600':'400'};">${p.fecha_notif||'—'}</td>
-    <td><button class="btn btn-danger" onclick="removePlaca(${p.id})">✕</button></td>
-  </tr>`).join('')}</tbody></table></div>`;
+  const wrap = document.getElementById('placas-table-wrap');
+  document.getElementById('placa-count').textContent = placas.length + ' registradas';
+  if(!placas.length){
+    wrap.innerHTML = '<div class="empty-state"><div style="font-size:2rem;">🔍</div><p>Aún no has agregado ninguna placa.</p></div>';
+    return;
+  }
+  wrap.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th>Placa</th><th>Propietario</th><th>Estado</th><th>Última consulta</th><th>Fecha notif.</th><th></th></tr></thead>
+    <tbody>${placas.map(p => `<tr>
+      <td><span class="placa-tag">${p.placa}</span></td>
+      <td><div class="owner-cell"><div class="owner-avatar">${initials(p.nombre)}</div><div><div class="owner-name">${p.nombre}</div><div class="owner-phone">${p.celular}</div></div></div></td>
+      <td><span class="badge ${p.estado==='activa'?'badge-green':p.estado==='alerta'?'badge-amber':'badge-gray'}"><span class="badge-dot"></span>${p.estado}</span></td>
+      <td style="color:#64748b;font-size:0.8rem;">${p.ultima_consulta ? new Date(p.ultima_consulta).toLocaleString('es-CO') : '—'}</td>
+      <td style="color:${p.fecha_notificacion?'#f59e0b':'#334155'};font-size:0.8rem;font-weight:${p.fecha_notificacion?'600':'400'};">${p.fecha_notificacion||'—'}</td>
+      <td><button class="btn btn-danger" onclick="removePlaca('${p.id}')">✕</button></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
 }
 
-function addActivity(msg,type='info'){
-  const list=document.getElementById('activity-list');
-  const now=new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
-  const item=document.createElement('div');
-  item.className=`alert-box ${type==='success'?'new-notif':''}`;
-  item.innerHTML=`<div style="font-size:16px;">${type==='success'?'🔔':'📡'}</div><div><div class="alert-title">${msg}</div></div><span class="alert-time">${now}</span>`;
-  if(list.querySelector('.empty-state')) list.innerHTML='';
-  list.prepend(item);
+// ── ALERTAS ──────────────────────────────────────────────
+async function loadAlertas(){
+  try {
+    const res = await fetch(BACKEND+'/alertas', { headers: authH() });
+    if(!res.ok) throw new Error(await res.text());
+    alertas = await res.json();
+    renderAlertasList();
+    updateStats();
+  } catch(e) {
+    console.error('Error cargando alertas:', e);
+  }
 }
 
 function renderAlertasList(){
-  const list=document.getElementById('alertas-list');
-  if(!alertas.length){list.innerHTML='<div class="empty-state"><div style="font-size:2rem;">🔔</div><p>Sin notificaciones aún.</p></div>';return;}
-  list.innerHTML=alertas.map(a=>`<div class="alert-box new-notif" style="margin-bottom:0.6rem;">
-    <div style="font-size:16px;">🔔</div>
-    <div><div class="alert-title">Placa <span class="placa-tag">${a.placa}</span> — ${a.nombre} — Fecha: ${a.fecha}</div>
-    <div class="alert-desc">Notificado en ${a.cel}</div></div>
-    <span class="alert-time">${a.time}</span></div>`).join('');
-}
-
-function clearAlertas(){ alertas=[]; saveAlertas(); renderAlertasList(); }
-
-async function runCheckNow(){
-  if(!placas.length) return toast('Agrega al menos una placa','red');
-  addActivity(`Consultando ${placas.length} placa(s) en la ANM...`);
-  const now=new Date().toLocaleString('es-CO');
-  nextCheck=new Date(Date.now()+24*3600000).toISOString();
-  localStorage.setItem('anm_next_'+uid, nextCheck);
-  for(let p of placas){
-    p.ultima=now;
-    if(Math.random()<0.15){
-      const fecha=new Date().toLocaleDateString('es-CO');
-      p.estado='alerta'; p.fecha_notif=fecha;
-      alertas.unshift({placa:p.placa,nombre:p.nombre,cel:p.cel,fecha,time:new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})});
-      addActivity(`🔔 Notificación para <strong>${p.nombre}</strong> — Placa <strong>${p.placa}</strong>`,'success');
-      document.getElementById('stat-today').textContent=parseInt(document.getElementById('stat-today').textContent||0)+1;
-    } else { p.estado='activa'; addActivity(`Placa <strong>${p.placa}</strong> (${p.nombre}) — Sin novedad`); }
+  const list = document.getElementById('alertas-list');
+  if(!alertas.length){
+    list.innerHTML = '<div class="empty-state"><div style="font-size:2rem;">🔔</div><p>Sin notificaciones aún.</p></div>';
+    return;
   }
-  savePlacas(); saveAlertas(); updateStats(); startCountdown(); toast('Consulta completada');
+  list.innerHTML = alertas.map(a => `<div class="alert-box new-notif" style="margin-bottom:0.6rem;">
+    <div style="font-size:16px;">🔔</div>
+    <div>
+      <div class="alert-title">Placa <span class="placa-tag">${a.placa}</span> — ${a.nombre}</div>
+      <div class="alert-desc">${a.mensaje || 'Notificación ANM detectada'}</div>
+    </div>
+    <span class="alert-time">${new Date(a.creado_en).toLocaleString('es-CO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+  </div>`).join('');
 }
 
-function updateStats(){
-  document.getElementById('stat-total').textContent=placas.length;
+// ── CONSULTAR ────────────────────────────────────────────
+async function runCheckNow(){
+  if(!placas.length) return toast('Agrega al menos una placa', 'red');
+  const btn = document.getElementById('btn-consultar');
+  btn.disabled = true;
+  btn.textContent = '⏳ Consultando...';
+  addActivity(`Consultando ${placas.length} placa(s) en la ANM...`);
+  try {
+    const res  = await fetch(BACKEND+'/consultar', { method: 'POST', headers: authH() });
+    const data = await res.json();
+    if(!res.ok) return toast(data.detail || 'Error al consultar', 'red');
+
+    nextCheck = new Date(Date.now() + 24*3600000).toISOString();
+    localStorage.setItem('anm_next_'+uid, nextCheck);
+
+    for(const r of data.resultados){
+      if(r.estado === 'alerta'){
+        addActivity(`🔔 Notificación para placa <strong>${r.placa}</strong>${r.fecha ? ' — Fecha: '+r.fecha : ''}`, 'success');
+      } else if(r.error){
+        addActivity(`⚠ Error consultando ${r.placa}: ${r.error}`);
+      } else {
+        addActivity(`Placa <strong>${r.placa}</strong> — Sin novedad`);
+      }
+    }
+
+    await loadPlacas();
+    await loadAlertas();
+    startCountdown();
+    toast('Consulta completada');
+  } catch(e) {
+    toast('Error de conexión', 'red');
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '↻ Consultar ahora';
+  }
 }
+
+// ── STATS ────────────────────────────────────────────────
+function updateStats(){
+  document.getElementById('stat-total').textContent = placas.length;
+  const today = new Date().toISOString().slice(0,10);
+  const hoy   = alertas.filter(a => a.creado_en && a.creado_en.slice(0,10) === today).length;
+  document.getElementById('stat-today').textContent = hoy;
+  const ultimas = placas.map(p => p.ultima_consulta).filter(Boolean).sort().reverse();
+  document.getElementById('stat-last').textContent = ultimas[0]
+    ? new Date(ultimas[0]).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})
+    : '—';
+}
+
+function addActivity(msg, type='info'){
+  const list = document.getElementById('activity-list');
+  const now  = new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+  const item = document.createElement('div');
+  item.className = `alert-box ${type === 'success' ? 'new-notif' : ''}`;
+  item.innerHTML  = `<div style="font-size:16px;">${type === 'success' ? '🔔' : '📡'}</div><div><div class="alert-title">${msg}</div></div><span class="alert-time">${now}</span>`;
+  if(list.querySelector('.empty-state')) list.innerHTML = '';
+  list.prepend(item);
+}
+
 function startCountdown(){
   if(countdownInterval) clearInterval(countdownInterval);
-  countdownInterval=setInterval(()=>{
+  countdownInterval = setInterval(() => {
     if(!nextCheck) return;
-    const diff=new Date(nextCheck)-Date.now();
-    if(diff<=0){runCheckNow();return;}
-    const h=Math.floor(diff/3600000),m=Math.floor((diff%3600000)/60000),s=Math.floor((diff%60000)/1000);
-    document.getElementById('countdown').textContent=`${h}h ${m}m ${s}s`;
-    const pct=Math.round((1-diff/(24*3600000))*100);
-    document.getElementById('progress-fill').style.width=pct+'%';
-    document.getElementById('progress-label').textContent=pct+'%';
-    document.getElementById('stat-next').textContent=`próxima: ${new Date(nextCheck).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}`;
-  },1000);
+    const diff = new Date(nextCheck) - Date.now();
+    if(diff <= 0){ runCheckNow(); return; }
+    const h = Math.floor(diff/3600000), m = Math.floor((diff%3600000)/60000), s = Math.floor((diff%60000)/1000);
+    document.getElementById('countdown').textContent = `${h}h ${m}m ${s}s`;
+    const pct = Math.round((1 - diff/(24*3600000)) * 100);
+    document.getElementById('progress-fill').style.width = pct+'%';
+    document.getElementById('progress-label').textContent = pct+'%';
+    document.getElementById('stat-next').textContent = `próxima: ${new Date(nextCheck).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}`;
+  }, 1000);
 }
 
-// CUENTA
+// ── CUENTA ───────────────────────────────────────────────
 async function cambiarPass(){
-  const actual=document.getElementById('pass-actual').value;
-  const nueva=document.getElementById('pass-nueva').value;
-  const nueva2=document.getElementById('pass-nueva2').value;
-  if(!actual||!nueva) return toast('Completa todos los campos','red');
-  if(nueva.length<6) return toast('Mínimo 6 caracteres','red');
-  if(nueva!==nueva2) return toast('Las contraseñas no coinciden','red');
-  try{
-    const res=await fetch(BACKEND+'/auth/change-password',{method:'POST',headers:authH(),body:JSON.stringify({password_actual:actual,password_nueva:nueva})});
-    const data=await res.json();
-    if(data.ok){toast('Contraseña actualizada ✓');['pass-actual','pass-nueva','pass-nueva2'].forEach(id=>document.getElementById(id).value='');}
-    else toast(data.error||'Contraseña actual incorrecta','red');
-  }catch(e){toast('Error de conexión','red');}
+  const actual  = document.getElementById('pass-actual').value;
+  const nueva   = document.getElementById('pass-nueva').value;
+  const nueva2  = document.getElementById('pass-nueva2').value;
+  if(!actual || !nueva) return toast('Completa todos los campos', 'red');
+  if(nueva.length < 6)  return toast('Mínimo 6 caracteres', 'red');
+  if(nueva !== nueva2)  return toast('Las contraseñas no coinciden', 'red');
+  try {
+    const res  = await fetch(BACKEND+'/auth/change-password', {
+      method: 'POST', headers: authH(),
+      body: JSON.stringify({ password_actual: actual, password_nueva: nueva })
+    });
+    const data = await res.json();
+    if(data.ok){
+      toast('Contraseña actualizada ✓');
+      ['pass-actual','pass-nueva','pass-nueva2'].forEach(id => document.getElementById(id).value = '');
+    } else {
+      toast(data.detail || 'Contraseña actual incorrecta', 'red');
+    }
+  } catch(e) { toast('Error de conexión', 'red'); }
 }
 
-function copySql(){ navigator.clipboard.writeText(document.querySelector('.sql-box').textContent).then(()=>toast('SQL copiado')); }
-
-function toast(msg,type='green'){
-  const t=document.getElementById('toast');
-  t.textContent=msg; t.style.display='block';
-  t.style.background=type==='green'?'#052e16':'#450a0a';
-  t.style.color=type==='green'?'#86efac':'#fca5a5';
-  t.style.borderColor=type==='green'?'#166534':'#991b1b';
-  setTimeout(()=>t.style.display='none',3000);
+function toast(msg, type='green'){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  t.style.background   = type === 'green' ? '#052e16' : '#450a0a';
+  t.style.color        = type === 'green' ? '#86efac' : '#fca5a5';
+  t.style.borderColor  = type === 'green' ? '#166534' : '#991b1b';
+  setTimeout(() => t.style.display = 'none', 3000);
 }
 
+// ── INIT ─────────────────────────────────────────────────
 loadUser();
-updateStats();
-if(nextCheck && new Date(nextCheck)>Date.now()) startCountdown();
+loadPlacas();
+loadAlertas();
+if(nextCheck && new Date(nextCheck) > Date.now()) startCountdown();
 </script>
 </body>
 </html>
