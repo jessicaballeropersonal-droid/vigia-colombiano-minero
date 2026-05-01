@@ -279,7 +279,7 @@ def consultar_anm(placa: str) -> dict:
         placa_re = re.compile(r'(?<![0-9a-z])' + placa_pattern + r'(?![0-9a-z])')
 
         print(f"[ANM:{placa}] HTTP status: {resp.status_code}")
-        print(f"[ANM:{placa}] HTML crudo (primeros 2000 chars):\n{resp.text[:2000]}")
+        print(f"[ANM:{placa}] HTML crudo (primeros 5000 chars):\n{resp.text[:5000]}")
         print(f"[ANM:{placa}] Texto plano (primeros 1000 chars):\n{texto[:1000]}")
 
         # Search in stripped text AND in raw HTML (plate may be inside a tag attribute or table cell)
