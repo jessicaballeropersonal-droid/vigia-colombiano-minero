@@ -80,10 +80,15 @@ def consultar_anm(placa: str) -> dict:
 
         resp = session.post(ANM_URL, data=data, headers=hdrs, verify=False, timeout=15)
         texto = re.sub(r'<[^>]+>', ' ', resp.text).lower()
-        placa_norm = placa.strip().lower()
+        html_lower = resp.text.lower()
 
-        # Check if the plate appears explicitly in the response (covers comma-separated lists)
-        placa_en_respuesta = bool(re.search(r'(?<![0-9a-z])' + re.escape(placa_norm) + r'(?![0-9a-z])', texto))
+        # Normalize plate: strip separators, then build pattern allowing space/dot between digits
+        placa_digits = re.sub(r'[\s.\-]', '', placa.strip().lower())
+        placa_pattern = r'[\s.]?'.join(re.escape(c) for c in placa_digits)
+        placa_re = re.compile(r'(?<![0-9a-z])' + placa_pattern + r'(?![0-9a-z])')
+
+        # Search in stripped text AND in raw HTML (plate may be inside a tag attribute or table cell)
+        placa_en_respuesta = bool(placa_re.search(texto) or placa_re.search(html_lower))
 
         # Extract publication date directly by pattern: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY
         m_fecha = (re.search(r'\b(\d{4}-\d{2}-\d{2})\b', texto) or
