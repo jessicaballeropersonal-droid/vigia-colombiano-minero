@@ -308,7 +308,7 @@ async def consultar_todas(user_id: str = Depends(get_user_id)):
             "fecha_notificacion": resultado["fecha"]
         })
 
-        if resultado["tiene_notificacion"] and resultado["fecha"]:
+        if resultado["tiene_notificacion"]:
             sb_insert("alertas", {
                 "usuario_id": user_id, "placa": p["placa"],
                 "nombre": p["nombre"], "celular": p["celular"],
