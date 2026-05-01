@@ -273,6 +273,10 @@ def consultar_anm(placa: str) -> dict:
         texto = re.sub(r'<[^>]+>', ' ', resp.text).lower()
         placa_norm = placa.strip().lower()
 
+        print(f"[ANM:{placa}] HTTP status: {resp.status_code}")
+        print(f"[ANM:{placa}] HTML crudo (primeros 2000 chars):\n{resp.text[:2000]}")
+        print(f"[ANM:{placa}] Texto plano (primeros 1000 chars):\n{texto[:1000]}")
+
         # Check if the plate appears explicitly in the response (covers comma-separated lists)
         placa_en_respuesta = bool(re.search(r'(?<![0-9a-z])' + re.escape(placa_norm) + r'(?![0-9a-z])', texto))
 
@@ -286,6 +290,8 @@ def consultar_anm(placa: str) -> dict:
         tiene_keywords = any(kw in texto for kw in
                              ["publicacion", "publicación", "notificacion", "notificación", "aviso"])
         tiene = placa_en_respuesta and (fecha is not None or tiene_keywords)
+
+        print(f"[ANM:{placa}] placa_en_respuesta={placa_en_respuesta} | fecha={fecha} | tiene_keywords={tiene_keywords} | tiene_notificacion={tiene}")
 
         return {"tiene_notificacion": tiene, "fecha": fecha, "error": None}
     except Exception as e:
