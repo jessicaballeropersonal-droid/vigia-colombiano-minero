@@ -276,18 +276,16 @@ def consultar_anm(placa: str) -> dict:
         # Check if the plate appears explicitly in the response (covers comma-separated lists)
         placa_en_respuesta = bool(re.search(r'(?<![0-9a-z])' + re.escape(placa_norm) + r'(?![0-9a-z])', texto))
 
-        # Also check for notification keywords that indicate a real result row
+        # Extract publication date directly by pattern: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY
+        m_fecha = (re.search(r'\b(\d{4}-\d{2}-\d{2})\b', texto) or
+                   re.search(r'\b(\d{2}/\d{2}/\d{4})\b', texto) or
+                   re.search(r'\b(\d{2}-\d{2}-\d{4})\b', texto))
+        fecha = m_fecha.group(1) if m_fecha else None
+
+        # Notification confirmed if plate is in response AND (date found OR result keywords present)
         tiene_keywords = any(kw in texto for kw in
-                             ["fecha", "publicacion", "publicación", "notificacion", "notificación", "aviso"])
-
-        tiene = placa_en_respuesta and tiene_keywords
-
-        fecha = None
-        for bloque in re.findall(r'[^<]{5,100}', resp.text):
-            b = bloque.strip()
-            if any(kw in b.lower() for kw in ["fecha", "publicacion", "publicación"]) and len(b) < 100:
-                fecha = b
-                break
+                             ["publicacion", "publicación", "notificacion", "notificación", "aviso"])
+        tiene = placa_en_respuesta and (fecha is not None or tiene_keywords)
 
         return {"tiene_notificacion": tiene, "fecha": fecha, "error": None}
     except Exception as e:
