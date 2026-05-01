@@ -69,34 +69,32 @@ def enviar_whatsapp(telefono: str, mensaje: str) -> bool:
 
 def consultar_anm(placa: str) -> dict:
     try:
-        session = requests.Session()
         hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        page = session.get(ANM_URL, headers=hdrs, verify=False, timeout=15)
+        params = {
+            "field_punto_de_atencion_regional_value": "All",
+            "field_fecha_de_publicacion_o_fij_value": "",
+            "field_mes_liberacion_de_area_value": "All",
+            "field_numero_titulo_value": placa,
+        }
+        resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
 
-        m = re.search(r'<input[^>]*name="_token"[^>]*value="([^"]*)"', page.text)
-        data = {"numero": placa}
-        if m:
-            data["_token"] = m.group(1)
-
-        resp = session.post(ANM_URL, data=data, headers=hdrs, verify=False, timeout=15)
         texto = re.sub(r'<[^>]+>', ' ', resp.text).lower()
         html_lower = resp.text.lower()
 
-        # Normalize plate: strip separators, then build pattern allowing space/dot between digits
+        # Normalize plate: strip separators, build pattern allowing space/dot between digits
         placa_digits = re.sub(r'[\s.\-]', '', placa.strip().lower())
         placa_pattern = r'[\s.]?'.join(re.escape(c) for c in placa_digits)
         placa_re = re.compile(r'(?<![0-9a-z])' + placa_pattern + r'(?![0-9a-z])')
 
-        # Search in stripped text AND in raw HTML (plate may be inside a tag attribute or table cell)
+        # Search in stripped text AND in raw HTML
         placa_en_respuesta = bool(placa_re.search(texto) or placa_re.search(html_lower))
 
-        # Extract publication date directly by pattern: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY
+        # Extract publication date: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY
         m_fecha = (re.search(r'\b(\d{4}-\d{2}-\d{2})\b', texto) or
                    re.search(r'\b(\d{2}/\d{2}/\d{4})\b', texto) or
                    re.search(r'\b(\d{2}-\d{2}-\d{4})\b', texto))
         fecha = m_fecha.group(1) if m_fecha else None
 
-        # Notification confirmed if plate is in response AND (date found OR result keywords present)
         tiene_keywords = any(kw in texto for kw in
                              ["publicacion", "publicación", "notificacion", "aviso"])
         tiene = placa_en_respuesta and (fecha is not None or tiene_keywords)
