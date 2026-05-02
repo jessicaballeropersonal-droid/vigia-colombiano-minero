@@ -57,6 +57,10 @@
   .badge-amber{background:#451a03;color:#f59e0b;border:1px solid #92400e;}
   .badge-gray{background:#1e293b;color:#64748b;border:1px solid #334155;}
   .badge-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
+  .btn-revisado{background:transparent;border:1px solid #166534;color:#22c55e;padding:0.25rem 0.6rem;font-size:0.72rem;border-radius:6px;cursor:pointer;white-space:nowrap;flex-shrink:0;}
+  .btn-revisado:hover{background:#052e16;}
+  .alert-box.revisada{opacity:0.45;border-left-color:#334155;background:#0f172a;}
+  .alert-box.revisada .alert-title{color:#64748b;}
   .placa-tag{font-family:monospace;font-size:0.95rem;font-weight:700;letter-spacing:0.1em;color:#fff;background:#1e3a5f;padding:0.2rem 0.5rem;border-radius:4px;}
   .owner-avatar{width:28px;height:28px;border-radius:50%;background:#1e3a5f;display:inline-flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700;color:#93c5fd;margin-right:6px;flex-shrink:0;}
   .owner-cell{display:flex;align-items:center;}
@@ -314,14 +318,24 @@ function renderAlertasList(){
     list.innerHTML = '<div class="empty-state"><div style="font-size:2rem;">🔔</div><p>Sin notificaciones aún.</p></div>';
     return;
   }
-  list.innerHTML = alertas.map(a => `<div class="alert-box new-notif" style="margin-bottom:0.6rem;">
-    <div style="font-size:16px;">🔔</div>
-    <div>
+  list.innerHTML = alertas.map(a => `<div class="alert-box ${a.revisado ? 'revisada' : 'new-notif'}" style="margin-bottom:0.6rem;">
+    <div style="font-size:16px;">${a.revisado ? '✓' : '🔔'}</div>
+    <div style="flex:1;">
       <div class="alert-title">Placa <span class="placa-tag">${a.placa}</span> — ${a.nombre}</div>
       <div class="alert-desc">${a.mensaje || 'Notificación ANM detectada'}</div>
     </div>
-    <span class="alert-time">${new Date(a.creado_en).toLocaleString('es-CO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+    <span class="alert-time" style="margin-right:0.5rem;">${new Date(a.creado_en).toLocaleString('es-CO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+    ${!a.revisado ? `<button class="btn-revisado" onclick="marcarRevisado('${a.id}')">✓ Revisado</button>` : ''}
   </div>`).join('');
+}
+
+async function marcarRevisado(id){
+  try {
+    const res = await fetch(BACKEND+'/alertas/'+id+'/revisado', { method: 'PATCH', headers: authH() });
+    if(!res.ok){ const d = await res.json(); return toast(d.detail||'Error','red'); }
+    await loadAlertas();
+    toast('Marcada como revisada');
+  } catch(e) { toast('Error de conexión','red'); }
 }
 
 // ── CONSULTAR ────────────────────────────────────────────
@@ -366,7 +380,7 @@ async function runCheckNow(){
 function updateStats(){
   document.getElementById('stat-total').textContent = placas.length;
   const today = new Date().toISOString().slice(0,10);
-  const hoy   = alertas.filter(a => a.creado_en && a.creado_en.slice(0,10) === today).length;
+  const hoy   = alertas.filter(a => a.creado_en && a.creado_en.slice(0,10) === today && !a.revisado).length;
   document.getElementById('stat-today').textContent = hoy;
   const ultimas = placas.map(p => p.ultima_consulta).filter(Boolean).sort().reverse();
   document.getElementById('stat-last').textContent = ultimas[0]
