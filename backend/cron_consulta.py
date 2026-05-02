@@ -78,16 +78,16 @@ def consultar_anm(placa: str) -> dict:
         }
         resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
 
+        # Strip tags — attributes (including echoed form values) are removed, only text nodes remain
         texto = re.sub(r'<[^>]+>', ' ', resp.text).lower()
-        html_lower = resp.text.lower()
 
-        # Normalize plate: strip separators, build pattern allowing space/dot between digits
+        # Normalize plate: strip separators, build pattern allowing space, dot OR hyphen between chars
         placa_digits = re.sub(r'[\s.\-]', '', placa.strip().lower())
-        placa_pattern = r'[\s.]?'.join(re.escape(c) for c in placa_digits)
-        placa_re = re.compile(r'(?<![0-9a-z])' + placa_pattern + r'(?![0-9a-z])')
+        placa_pattern = r'[\s.\-]?'.join(re.escape(c) for c in placa_digits)
+        placa_re = re.compile(r'(?<![0-9a-zA-Z\-])' + placa_pattern + r'(?![0-9a-zA-Z\-])')
 
-        # Search in stripped text AND in raw HTML
-        placa_en_respuesta = bool(placa_re.search(texto) or placa_re.search(html_lower))
+        # Search only in stripped text (NOT raw HTML) to avoid matching the echoed form input value
+        placa_en_respuesta = bool(placa_re.search(texto))
 
         # Extract publication date: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY
         m_fecha = (re.search(r'\b(\d{4}-\d{2}-\d{2})\b', texto) or
