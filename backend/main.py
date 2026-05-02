@@ -257,6 +257,11 @@ async def get_alertas(user_id: str = Depends(get_user_id)):
         "order": "creado_en.desc", "limit": 50
     })
 
+@app.patch("/alertas/{alerta_id}/revisado")
+async def marcar_revisado(alerta_id: str, user_id: str = Depends(get_user_id)):
+    sb_update("alertas", {"id": f"eq.{alerta_id}", "usuario_id": f"eq.{user_id}"}, {"revisado": True})
+    return {"ok": True}
+
 # ===================== CONSULTA ANM =====================
 def consultar_anm(placa: str) -> dict:
     try:
@@ -316,17 +321,25 @@ async def consultar_todas(user_id: str = Depends(get_user_id)):
         })
 
         if resultado["tiene_notificacion"]:
-            sb_insert("alertas", {
-                "usuario_id": user_id, "placa": p["placa"],
-                "nombre": p["nombre"], "celular": p["celular"],
-                "fecha_publicacion": resultado["fecha"],
-                "mensaje": f"Notificación ANM detectada para placa {p['placa']} - Fecha: {resultado['fecha']}"
+            fecha_key = resultado["fecha"] or datetime.now().strftime("%Y-%m-%d")
+            ya_existe = sb_select("alertas", {
+                "select": "id",
+                "usuario_id": f"eq.{user_id}",
+                "placa": f"eq.{p['placa']}",
+                "fecha_publicacion": f"eq.{fecha_key}"
             })
-            enviar_whatsapp(p["celular"], (
-                f"Monitor ANM - Notificacion detectada!\n"
-                f"Placa: {p['placa']}\nPropietario: {p['nombre']}\n"
-                f"Fecha publicacion: {resultado['fecha']}\nRevisa la ANM: {ANM_URL}"
-            ))
+            if not ya_existe:
+                sb_insert("alertas", {
+                    "usuario_id": user_id, "placa": p["placa"],
+                    "nombre": p["nombre"], "celular": p["celular"],
+                    "fecha_publicacion": fecha_key,
+                    "mensaje": f"Notificación ANM detectada para placa {p['placa']} - Fecha: {fecha_key}"
+                })
+                enviar_whatsapp(p["celular"], (
+                    f"Monitor ANM - Notificacion detectada!\n"
+                    f"Placa: {p['placa']}\nPropietario: {p['nombre']}\n"
+                    f"Fecha publicacion: {fecha_key}\nRevisa la ANM: {ANM_URL}"
+                ))
 
         resultados.append({
             "placa": p["placa"], "estado": estado,
