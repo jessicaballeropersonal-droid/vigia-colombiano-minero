@@ -286,7 +286,13 @@ def consultar_anm(placa: str) -> dict:
         avisos = []
         MAX_PAGES = 3
         for page in range(MAX_PAGES):
-            params = {"field_numero_titulo_value": placa, "page": page}
+            params = {
+                "field_pla_tit_min_value": placa,
+                "field_punto_de_atencion_regional_value": "All",
+                "field_fecha_de_publicacion_o_fij_value": "",
+                "field_mes_liberacion_de_area_value": "All",
+                "page": page,
+            }
             resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=8)
 
             tbody_m = re.search(r'<tbody>(.*?)</tbody>', resp.text, re.DOTALL | re.IGNORECASE)
