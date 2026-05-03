@@ -67,6 +67,19 @@ def enviar_whatsapp(telefono: str, mensaje: str) -> bool:
         print(f"  Error WhatsApp: {e}")
         return False
 
+def _extraer_fecha_fila(row_text: str):
+    m = (re.search(r'\b(\d{4}-\d{2}-\d{2})\b', row_text) or
+         re.search(r'\b(\d{2}/\d{2}/\d{4})\b', row_text) or
+         re.search(r'\b(\d{2}-\d{2}-\d{4})\b', row_text))
+    if not m:
+        return None
+    raw = m.group(1)
+    parts = re.match(r'^(\d{2})[/\-](\d{2})[/\-](\d{4})$', raw)
+    if parts:
+        return f"{parts.group(3)}-{parts.group(2)}-{parts.group(1)}"
+    return raw
+
+
 def consultar_anm(placa: str) -> dict:
     try:
         hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -78,28 +91,23 @@ def consultar_anm(placa: str) -> dict:
         }
         resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
 
-        # Strip tags — attributes (including echoed form values) are removed, only text nodes remain
-        texto = re.sub(r'<[^>]+>', ' ', resp.text).lower()
-
         # Normalize plate: strip separators, build pattern allowing space, dot OR hyphen between chars
         placa_digits = re.sub(r'[\s.\-]', '', placa.strip().lower())
         placa_pattern = r'[\s.\-]?'.join(re.escape(c) for c in placa_digits)
         placa_re = re.compile(r'(?<![0-9a-zA-Z\-])' + placa_pattern + r'(?![0-9a-zA-Z\-])')
 
-        # Search only in stripped text (NOT raw HTML) to avoid matching the echoed form input value
-        placa_en_respuesta = bool(placa_re.search(texto))
+        # Search plate and extract date only within <tr>...</tr> rows
+        placa_en_respuesta = False
+        fecha = None
+        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', resp.text, re.DOTALL | re.IGNORECASE)
+        for row in rows:
+            row_text = re.sub(r'<[^>]+>', ' ', row).lower()
+            if placa_re.search(row_text):
+                placa_en_respuesta = True
+                fecha = _extraer_fecha_fila(row_text)
+                break
 
-        # Extract publication date: YYYY-MM-DD, DD/MM/YYYY, DD-MM-YYYY
-        m_fecha = (re.search(r'\b(\d{4}-\d{2}-\d{2})\b', texto) or
-                   re.search(r'\b(\d{2}/\d{2}/\d{4})\b', texto) or
-                   re.search(r'\b(\d{2}-\d{2}-\d{4})\b', texto))
-        fecha = m_fecha.group(1) if m_fecha else None
-
-        tiene_keywords = any(kw in texto for kw in
-                             ["publicacion", "publicación", "notificacion", "aviso"])
-        tiene = placa_en_respuesta and (fecha is not None or tiene_keywords)
-
-        return {"tiene": tiene, "fecha": fecha}
+        return {"tiene": placa_en_respuesta, "fecha": fecha}
     except Exception as e:
         print(f"  Error consultando ANM: {e}")
         return {"tiene": False, "fecha": None}
