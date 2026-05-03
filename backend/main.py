@@ -270,47 +270,45 @@ async def set_revisado(alerta_id: str, body: RevisadoModel, user_id: str = Depen
 def consultar_anm(placa: str) -> dict:
     try:
         hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        params = {
-            "field_punto_de_atencion_regional_value": "All",
-            "field_fecha_de_publicacion_o_fij_value": "",
-            "field_mes_liberacion_de_area_value": "All",
-            "field_numero_titulo_value": placa,
-        }
-        resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
-
         placa_re = re.compile(
             r'(?<![0-9A-Za-z-])' + re.escape(placa.strip()) + r'(?![0-9A-Za-z-])',
             re.IGNORECASE
         )
 
-        # Scope to <tbody> only — avoids matching plate in form inputs or <thead>
-        tbody_m = re.search(r'<tbody>(.*?)</tbody>', resp.text, re.DOTALL | re.IGNORECASE)
-        if not tbody_m:
-            print(f"[ANM:{placa}] No <tbody> en respuesta (HTTP {resp.status_code})")
-            return {"tiene_notificacion": False, "avisos": [], "error": None}
-
-        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbody_m.group(1), re.DOTALL | re.IGNORECASE)
-        print(f"[ANM:{placa}] HTTP {resp.status_code} | filas en tbody: {len(rows)}")
-
         avisos = []
-        for i, row in enumerate(rows):
-            # Date from <time datetime="YYYY-MM-DD..."> — exact and reliable
-            time_m = re.search(r'<time[^>]+datetime="(\d{4}-\d{2}-\d{2})', row, re.IGNORECASE)
-            fecha = time_m.group(1) if time_m else None
+        page = 0
+        while True:
+            params = {"field_numero_titulo_value": placa, "page": page}
+            resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
 
-            row_text = re.sub(r'<[^>]+>', ' ', row)
-            row_text = re.sub(r'\s+', ' ', row_text).strip().lower()
+            tbody_m = re.search(r'<tbody>(.*?)</tbody>', resp.text, re.DOTALL | re.IGNORECASE)
+            if not tbody_m:
+                print(f"[ANM:{placa}] página {page} — sin <tbody>, fin de resultados")
+                break
 
-            if placa_re.search(row_text):
-                print(f"[ANM:{placa}] Fila {i} COINCIDE | fecha={fecha!r} | texto: {row_text[:300]}")
-                if fecha:
-                    avisos.append(fecha)
-            else:
-                if i < 10:
-                    print(f"[ANM:{placa}] Fila {i} texto: {row_text[:500]}")
+            rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbody_m.group(1), re.DOTALL | re.IGNORECASE)
+            print(f"[ANM:{placa}] HTTP {resp.status_code} | página {page} | filas: {len(rows)}")
+            if not rows:
+                break
+
+            for i, row in enumerate(rows):
+                time_m = re.search(r'<time[^>]+datetime="(\d{4}-\d{2}-\d{2})', row, re.IGNORECASE)
+                fecha = time_m.group(1) if time_m else None
+                row_text = re.sub(r'<[^>]+>', ' ', row)
+                row_text = re.sub(r'\s+', ' ', row_text).strip().lower()
+
+                if placa_re.search(row_text):
+                    print(f"[ANM:{placa}] p{page}/f{i} COINCIDE | fecha={fecha!r} | texto: {row_text[:300]}")
+                    if fecha:
+                        avisos.append(fecha)
+                else:
+                    if i < 5:
+                        print(f"[ANM:{placa}] p{page}/f{i} texto: {row_text[:500]}")
+
+            page += 1
 
         tiene = len(avisos) > 0
-        print(f"[ANM:{placa}] avisos={avisos} | tiene_notificacion={tiene}")
+        print(f"[ANM:{placa}] total páginas={page} | avisos={avisos} | tiene_notificacion={tiene}")
         return {"tiene_notificacion": tiene, "avisos": avisos, "error": None}
     except Exception as e:
         print(f"[ANM:{placa}] Error: {e}")
