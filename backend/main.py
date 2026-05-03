@@ -257,9 +257,12 @@ async def get_alertas(user_id: str = Depends(get_user_id)):
         "order": "creado_en.desc", "limit": 50
     })
 
+class RevisadoModel(BaseModel):
+    revisado: bool
+
 @app.patch("/alertas/{alerta_id}/revisado")
-async def marcar_revisado(alerta_id: str, user_id: str = Depends(get_user_id)):
-    sb_update("alertas", {"id": f"eq.{alerta_id}", "usuario_id": f"eq.{user_id}"}, {"revisado": True})
+async def set_revisado(alerta_id: str, body: RevisadoModel, user_id: str = Depends(get_user_id)):
+    sb_update("alertas", {"id": f"eq.{alerta_id}", "usuario_id": f"eq.{user_id}"}, {"revisado": body.revisado})
     return {"ok": True}
 
 # ===================== CONSULTA ANM =====================
