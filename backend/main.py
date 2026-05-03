@@ -257,7 +257,7 @@ async def delete_placa(placa_id: str, user_id: str = Depends(get_user_id)):
 async def get_alertas(user_id: str = Depends(get_user_id)):
     return sb_select("alertas", {
         "select": "*", "usuario_id": f"eq.{user_id}",
-        "order": "creado_en.desc", "limit": 50
+        "order": "fecha_publicacion.desc", "limit": 50
     })
 
 class RevisadoModel(BaseModel):
