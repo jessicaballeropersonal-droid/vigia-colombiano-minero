@@ -91,26 +91,24 @@ def consultar_anm(placa: str) -> dict:
         }
         resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
 
-        # Normalize plate: strip separators, build pattern allowing space, dot OR hyphen between chars
         placa_digits = re.sub(r'[\s.\-]', '', placa.strip().lower())
         placa_pattern = r'[\s.\-]?'.join(re.escape(c) for c in placa_digits)
         placa_re = re.compile(r'(?<![0-9a-zA-Z\-])' + placa_pattern + r'(?![0-9a-zA-Z\-])')
 
-        # Search plate and extract date only within <tr>...</tr> rows
-        placa_en_respuesta = False
-        fecha = None
+        # Collect ALL rows with plate + real date. No date = not a valid aviso.
+        avisos = []
         rows = re.findall(r'<tr[^>]*>(.*?)</tr>', resp.text, re.DOTALL | re.IGNORECASE)
         for row in rows:
             row_text = re.sub(r'<[^>]+>', ' ', row).lower()
             if placa_re.search(row_text):
-                placa_en_respuesta = True
                 fecha = _extraer_fecha_fila(row_text)
-                break
+                if fecha:
+                    avisos.append(fecha)
 
-        return {"tiene": placa_en_respuesta, "fecha": fecha}
+        return {"tiene": len(avisos) > 0, "avisos": avisos}
     except Exception as e:
         print(f"  Error consultando ANM: {e}")
-        return {"tiene": False, "fecha": None}
+        return {"tiene": False, "avisos": []}
 
 # ===================== MAIN =====================
 def main():
@@ -130,35 +128,47 @@ def main():
     for p in placas:
         print(f"→ Consultando placa {p['placa']} (propietario: {p['nombre']})...")
         resultado = consultar_anm(p["placa"])
+        avisos    = resultado["avisos"]
+        estado    = "alerta" if resultado["tiene"] else "activa"
 
-        estado = "alerta" if resultado["tiene"] else "activa"
+        fecha_mas_reciente = sorted(avisos)[-1] if avisos else None
         sb_update("placas", {"id": f"eq.{p['id']}"}, {
             "ultima_consulta": ahora.isoformat(),
             "estado": estado,
-            "fecha_notificacion": resultado["fecha"]
+            "fecha_notificacion": fecha_mas_reciente
         })
 
-        if resultado["tiene"] and resultado["fecha"]:
-            notificaciones += 1
-            print(f"  NOTIFICACIÓN DETECTADA — Fecha: {resultado['fecha']}")
-
-            sb_insert("alertas", {
-                "usuario_id": p["usuario_id"],
-                "placa": p["placa"],
-                "nombre": p["nombre"],
-                "celular": p["celular"],
-                "fecha_publicacion": resultado["fecha"],
-                "mensaje": f"Notificación ANM — Placa {p['placa']} — Fecha: {resultado['fecha']}"
+        nuevas = 0
+        for fecha in avisos:
+            ya_existe = sb_select("alertas", {
+                "select": "id",
+                "usuario_id": f"eq.{p['usuario_id']}",
+                "placa": f"eq.{p['placa']}",
+                "fecha_publicacion": f"eq.{fecha}"
             })
+            if not ya_existe:
+                sb_insert("alertas", {
+                    "usuario_id": p["usuario_id"],
+                    "placa": p["placa"],
+                    "nombre": p["nombre"],
+                    "celular": p["celular"],
+                    "fecha_publicacion": fecha,
+                    "mensaje": f"Notificación ANM — Placa {p['placa']} — Fecha: {fecha}"
+                })
+                nuevas += 1
+                notificaciones += 1
+                print(f"  NUEVA ALERTA — Fecha: {fecha}")
 
+        if nuevas > 0:
+            fechas_str = ", ".join(sorted(avisos))
             enviar_whatsapp(p["celular"], (
-                f"⛏ Monitor ANM - Notificacion!\n"
-                f"Su placa *{p['placa']}* tiene una publicacion en la ANM.\n"
-                f"Fecha: {resultado['fecha']}\n"
+                f"⛏ Monitor ANM - {nuevas} aviso(s) detectado(s)!\n"
+                f"Placa: *{p['placa']}*\n"
+                f"Fecha(s): {fechas_str}\n"
                 f"Revisar en: {ANM_URL}"
             ))
             print(f"  WhatsApp enviado a: {p['celular']}")
-        else:
+        elif not avisos:
             print(f"  — Sin novedad")
 
     print(f"\n{'='*50}")
