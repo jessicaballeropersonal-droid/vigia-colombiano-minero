@@ -16,7 +16,6 @@ from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 import os
 import urllib3
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 urllib3.disable_warnings()
 
 # ===================== CONFIG =====================
@@ -267,61 +266,48 @@ async def set_revisado(alerta_id: str, body: RevisadoModel, user_id: str = Depen
     return {"ok": True}
 
 # ===================== CONSULTA ANM =====================
-def _extraer_fecha_fila(row_text: str) -> str | None:
-    """Extrae y normaliza una fecha de publicación dentro del texto de una fila <tr>."""
-    m = (re.search(r'\b(\d{4}-\d{2}-\d{2})\b', row_text) or
-         re.search(r'\b(\d{2}/\d{2}/\d{4})\b', row_text) or
-         re.search(r'\b(\d{2}-\d{2}-\d{4})\b', row_text))
-    if not m:
-        return None
-    raw = m.group(1)
-    # Normalizar DD/MM/YYYY o DD-MM-YYYY → YYYY-MM-DD
-    parts = re.match(r'^(\d{2})[/\-](\d{2})[/\-](\d{4})$', raw)
-    if parts:
-        return f"{parts.group(3)}-{parts.group(2)}-{parts.group(1)}"
-    return raw
-
 
 def consultar_anm(placa: str) -> dict:
-    url = (
-        f"{ANM_URL}?field_punto_de_atencion_regional_value=All"
-        f"&field_fecha_de_publicacion_o_fij_value="
-        f"&field_mes_liberacion_de_area_value=All"
-        f"&field_numero_titulo_value={placa}"
-    )
-    placa_re = re.compile(
-        r'(?<![0-9A-Za-z-])' + re.escape(placa.strip()) + r'(?![0-9A-Za-z-])',
-        re.IGNORECASE
-    )
     try:
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-dev-shm-usage"]
-            )
-            page = browser.new_page()
-            page.goto(url, timeout=30000)
-            try:
-                page.wait_for_selector("table tbody tr", timeout=15000)
-            except PlaywrightTimeoutError:
-                print(f"[ANM:{placa}] Timeout esperando tabla — sin resultados")
-                browser.close()
-                return {"tiene_notificacion": False, "avisos": [], "error": None}
+        hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        params = {
+            "field_punto_de_atencion_regional_value": "All",
+            "field_fecha_de_publicacion_o_fij_value": "",
+            "field_mes_liberacion_de_area_value": "All",
+            "field_numero_titulo_value": placa,
+        }
+        resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
 
-            rows = page.query_selector_all("table tbody tr")
-            print(f"[ANM:{placa}] Filas encontradas en tabla: {len(rows)}")
-            avisos = []
-            for i, row in enumerate(rows):
-                row_text = row.inner_text().lower()
-                if placa_re.search(row_text):
-                    fecha = _extraer_fecha_fila(row_text)
-                    print(f"[ANM:{placa}] Fila {i} COINCIDE | fecha={fecha!r} | texto: {row_text[:300]}")
-                    if fecha:
-                        avisos.append(fecha)
-                else:
-                    if i < 5:
-                        print(f"[ANM:{placa}] Fila {i} texto: {row_text[:200]}")
-            browser.close()
+        placa_re = re.compile(
+            r'(?<![0-9A-Za-z-])' + re.escape(placa.strip()) + r'(?![0-9A-Za-z-])',
+            re.IGNORECASE
+        )
+
+        # Scope to <tbody> only — avoids matching plate in form inputs or <thead>
+        tbody_m = re.search(r'<tbody>(.*?)</tbody>', resp.text, re.DOTALL | re.IGNORECASE)
+        if not tbody_m:
+            print(f"[ANM:{placa}] No <tbody> en respuesta (HTTP {resp.status_code})")
+            return {"tiene_notificacion": False, "avisos": [], "error": None}
+
+        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbody_m.group(1), re.DOTALL | re.IGNORECASE)
+        print(f"[ANM:{placa}] HTTP {resp.status_code} | filas en tbody: {len(rows)}")
+
+        avisos = []
+        for i, row in enumerate(rows):
+            # Date from <time datetime="YYYY-MM-DD..."> — exact and reliable
+            time_m = re.search(r'<time[^>]+datetime="(\d{4}-\d{2}-\d{2})', row, re.IGNORECASE)
+            fecha = time_m.group(1) if time_m else None
+
+            row_text = re.sub(r'<[^>]+>', ' ', row)
+            row_text = re.sub(r'\s+', ' ', row_text).strip().lower()
+
+            if placa_re.search(row_text):
+                print(f"[ANM:{placa}] Fila {i} COINCIDE | fecha={fecha!r} | texto: {row_text[:300]}")
+                if fecha:
+                    avisos.append(fecha)
+            else:
+                if i < 5:
+                    print(f"[ANM:{placa}] Fila {i} texto: {row_text[:200]}")
 
         tiene = len(avisos) > 0
         print(f"[ANM:{placa}] avisos={avisos} | tiene_notificacion={tiene}")
