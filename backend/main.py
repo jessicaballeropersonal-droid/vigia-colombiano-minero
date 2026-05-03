@@ -297,25 +297,26 @@ def consultar_anm(placa: str) -> dict:
         placa_pattern = r'[\s.\-]?'.join(re.escape(c) for c in placa_digits)
         placa_re = re.compile(r'(?<![0-9a-zA-Z\-])' + placa_pattern + r'(?![0-9a-zA-Z\-])')
 
-        # Search plate and extract date only within <tr>...</tr> rows
-        # This avoids matching the echoed form input value and stray dates in navigation/meta tags
-        placa_en_respuesta = False
-        fecha = None
+        # Collect ALL rows that contain the plate AND have a real date.
+        # Only rows with an extracted date are considered valid avisos.
+        # This prevents false positives (plate found in row without publication date)
+        # and never falls back to datetime.now().
+        avisos = []
         rows = re.findall(r'<tr[^>]*>(.*?)</tr>', resp.text, re.DOTALL | re.IGNORECASE)
         for row in rows:
             row_text = re.sub(r'<[^>]+>', ' ', row).lower()
             if placa_re.search(row_text):
-                placa_en_respuesta = True
                 fecha = _extraer_fecha_fila(row_text)
-                print(f"[ANM:{placa}] Fila encontrada: {row_text[:300]}")
-                break
+                if fecha:
+                    avisos.append(fecha)
+                    print(f"[ANM:{placa}] Aviso encontrado: fecha={fecha} | {row_text[:200]}")
 
-        tiene = placa_en_respuesta
-        print(f"[ANM:{placa}] HTTP {resp.status_code} | placa_en_respuesta={placa_en_respuesta} | fecha={fecha} | tiene_notificacion={tiene}")
+        tiene = len(avisos) > 0
+        print(f"[ANM:{placa}] HTTP {resp.status_code} | avisos={avisos} | tiene_notificacion={tiene}")
 
-        return {"tiene_notificacion": tiene, "fecha": fecha, "error": None}
+        return {"tiene_notificacion": tiene, "avisos": avisos, "error": None}
     except Exception as e:
-        return {"tiene_notificacion": False, "fecha": None, "error": str(e)}
+        return {"tiene_notificacion": False, "avisos": [], "error": str(e)}
 
 @app.post("/consultar")
 async def consultar_todas(user_id: str = Depends(get_user_id)):
@@ -325,48 +326,46 @@ async def consultar_todas(user_id: str = Depends(get_user_id)):
 
     for p in placas:
         resultado = consultar_anm(p["placa"])
-        estado = "alerta" if resultado["tiene_notificacion"] else "activa"
+        avisos = resultado["avisos"]          # list of real fecha strings from ANM
+        tiene  = resultado["tiene_notificacion"]
+        estado = "alerta" if tiene else "activa"
 
+        fecha_mas_reciente = sorted(avisos)[-1] if avisos else None
         sb_update("placas", {"id": f"eq.{p['id']}"}, {
             "ultima_consulta": ahora, "estado": estado,
-            "fecha_notificacion": resultado["fecha"]
+            "fecha_notificacion": fecha_mas_reciente
         })
 
-        if resultado["tiene_notificacion"]:
-            fecha_notif = resultado["fecha"]
-            if fecha_notif:
-                # Deduplicate by placa + fecha_publicacion exacta
-                ya_existe = sb_select("alertas", {
-                    "select": "id",
-                    "usuario_id": f"eq.{user_id}",
-                    "placa": f"eq.{p['placa']}",
-                    "fecha_publicacion": f"eq.{fecha_notif}"
-                })
-            else:
-                # Sin fecha: evitar duplicado si ya existe alguna alerta hoy para esta placa
-                hoy = datetime.now().strftime("%Y-%m-%d")
-                ya_existe = sb_select("alertas", {
-                    "select": "id",
-                    "usuario_id": f"eq.{user_id}",
-                    "placa": f"eq.{p['placa']}",
-                    "creado_en": f"gte.{hoy}T00:00:00"
-                })
+        # One alert per aviso date. No fecha = no alert (never use datetime.now() as fallback).
+        nuevas = 0
+        for fecha in avisos:
+            ya_existe = sb_select("alertas", {
+                "select": "id",
+                "usuario_id": f"eq.{user_id}",
+                "placa": f"eq.{p['placa']}",
+                "fecha_publicacion": f"eq.{fecha}"
+            })
             if not ya_existe:
                 sb_insert("alertas", {
                     "usuario_id": user_id, "placa": p["placa"],
                     "nombre": p["nombre"], "celular": p["celular"],
-                    "fecha_publicacion": fecha_notif,
-                    "mensaje": f"Notificación ANM detectada para placa {p['placa']}" + (f" - Fecha: {fecha_notif}" if fecha_notif else "")
+                    "fecha_publicacion": fecha,
+                    "mensaje": f"Notificación ANM para placa {p['placa']} - Fecha: {fecha}"
                 })
-                enviar_whatsapp(p["celular"], (
-                    f"Monitor ANM - Notificacion detectada!\n"
-                    f"Placa: {p['placa']}\nPropietario: {p['nombre']}\n"
-                    f"Fecha publicacion: {fecha_notif or 'ver ANM'}\nRevisa la ANM: {ANM_URL}"
-                ))
+                nuevas += 1
+
+        # One WhatsApp per plate (not per aviso) when new alerts were created
+        if nuevas > 0:
+            fechas_str = ", ".join(sorted(avisos))
+            enviar_whatsapp(p["celular"], (
+                f"Monitor ANM - {nuevas} aviso(s) detectado(s)!\n"
+                f"Placa: {p['placa']}\nPropietario: {p['nombre']}\n"
+                f"Fecha(s): {fechas_str}\nRevisa la ANM: {ANM_URL}"
+            ))
 
         resultados.append({
             "placa": p["placa"], "estado": estado,
-            "fecha": resultado["fecha"], "error": resultado["error"]
+            "fechas": avisos, "nuevas_alertas": nuevas, "error": resultado["error"]
         })
 
     return {"resultados": resultados, "consultadas": len(placas), "fecha": ahora}
