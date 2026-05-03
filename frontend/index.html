@@ -59,6 +59,8 @@
   .badge-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
   .btn-revisado{background:transparent;border:1px solid #166534;color:#22c55e;padding:0.25rem 0.6rem;font-size:0.72rem;border-radius:6px;cursor:pointer;white-space:nowrap;flex-shrink:0;}
   .btn-revisado:hover{background:#052e16;}
+  .btn-desmarcar{background:transparent;border:1px solid #334155;color:#64748b;padding:0.25rem 0.6rem;font-size:0.72rem;border-radius:6px;cursor:pointer;white-space:nowrap;flex-shrink:0;}
+  .btn-desmarcar:hover{background:#1e293b;color:#94a3b8;}
   .alert-box.revisada{opacity:0.45;border-left-color:#334155;background:#0f172a;}
   .alert-box.revisada .alert-title{color:#64748b;}
   .placa-tag{font-family:monospace;font-size:0.95rem;font-weight:700;letter-spacing:0.1em;color:#fff;background:#1e3a5f;padding:0.2rem 0.5rem;border-radius:4px;}
@@ -335,7 +337,9 @@ function renderAlertasList(){
           </div>
         </div>
         <span class="alert-time" style="margin-right:0.5rem;">${new Date(a.creado_en).toLocaleString('es-CO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
-        ${!a.revisado ? `<button class="btn-revisado" onclick="marcarRevisado('${a.id}')">✓ Revisado</button>` : ''}
+        ${a.revisado
+          ? `<button class="btn-desmarcar" onclick="toggleRevisado('${a.id}',false)">↩ Desmarcar</button>`
+          : `<button class="btn-revisado"  onclick="toggleRevisado('${a.id}',true)">✓ Revisado</button>`}
       </div>`).join('');
     return `<div style="margin-bottom:1.25rem;">
       <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;">
@@ -348,16 +352,19 @@ function renderAlertasList(){
   }).join('');
 }
 
-async function marcarRevisado(id){
+async function toggleRevisado(id, revisado){
   try {
-    const res = await fetch(BACKEND+'/alertas/'+id+'/revisado', { method: 'PATCH', headers: authH() });
+    const res = await fetch(BACKEND+'/alertas/'+id+'/revisado', {
+      method: 'PATCH', headers: authH(),
+      body: JSON.stringify({ revisado })
+    });
     if(!res.ok){
       let msg = `Error ${res.status}`;
       try { const d = await res.json(); msg = d.detail || msg; } catch {}
       return toast(msg, 'red');
     }
     await loadAlertas();
-    toast('Marcada como revisada');
+    toast(revisado ? 'Marcada como revisada' : 'Desmarcada');
   } catch(e) { toast('Error de conexión: '+e.message, 'red'); }
 }
 
