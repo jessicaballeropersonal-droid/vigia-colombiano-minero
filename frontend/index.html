@@ -332,10 +332,14 @@ function renderAlertasList(){
 async function marcarRevisado(id){
   try {
     const res = await fetch(BACKEND+'/alertas/'+id+'/revisado', { method: 'PATCH', headers: authH() });
-    if(!res.ok){ const d = await res.json(); return toast(d.detail||'Error','red'); }
+    if(!res.ok){
+      let msg = `Error ${res.status}`;
+      try { const d = await res.json(); msg = d.detail || msg; } catch {}
+      return toast(msg, 'red');
+    }
     await loadAlertas();
     toast('Marcada como revisada');
-  } catch(e) { toast('Error de conexión','red'); }
+  } catch(e) { toast('Error de conexión: '+e.message, 'red'); }
 }
 
 // ── CONSULTAR ────────────────────────────────────────────
