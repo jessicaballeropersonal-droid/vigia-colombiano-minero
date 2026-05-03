@@ -320,11 +320,14 @@ function renderAlertasList(){
     list.innerHTML = '<div class="empty-state"><div style="font-size:2rem;">🔔</div><p>Sin notificaciones aún.</p></div>';
     return;
   }
-  // Group by placa, preserving insertion order
+  // Group by placa, sort each group desc by fecha_publicacion
   const grupos = {};
   alertas.forEach(a => {
     if(!grupos[a.placa]) grupos[a.placa] = { nombre: a.nombre, items: [] };
     grupos[a.placa].items.push(a);
+  });
+  Object.values(grupos).forEach(g => {
+    g.items.sort((a, b) => (b.fecha_publicacion || '').localeCompare(a.fecha_publicacion || ''));
   });
   list.innerHTML = Object.entries(grupos).map(([placa, g]) => {
     const pendientes = g.items.filter(a => !a.revisado).length;
