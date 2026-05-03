@@ -280,40 +280,34 @@ def consultar_anm(placa: str) -> dict:
             re.IGNORECASE
         )
 
+        params = {"field_numero_titulo_value": placa}
+        resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
+
+        tbody_m = re.search(r'<tbody>(.*?)</tbody>', resp.text, re.DOTALL | re.IGNORECASE)
+        if not tbody_m:
+            print(f"[ANM:{placa}] No <tbody> en respuesta (HTTP {resp.status_code})")
+            return {"tiene_notificacion": False, "avisos": [], "error": None}
+
+        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbody_m.group(1), re.DOTALL | re.IGNORECASE)
+        print(f"[ANM:{placa}] HTTP {resp.status_code} | filas en tbody: {len(rows)}")
+
         avisos = []
-        page = 0
-        while True:
-            params = {"field_numero_titulo_value": placa, "page": page}
-            resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
+        for i, row in enumerate(rows):
+            time_m = re.search(r'<time[^>]+datetime="(\d{4}-\d{2}-\d{2})', row, re.IGNORECASE)
+            fecha = time_m.group(1) if time_m else None
+            row_text = re.sub(r'<[^>]+>', ' ', row)
+            row_text = re.sub(r'\s+', ' ', row_text).strip().lower()
 
-            tbody_m = re.search(r'<tbody>(.*?)</tbody>', resp.text, re.DOTALL | re.IGNORECASE)
-            if not tbody_m:
-                print(f"[ANM:{placa}] página {page} — sin <tbody>, fin de resultados")
-                break
-
-            rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbody_m.group(1), re.DOTALL | re.IGNORECASE)
-            print(f"[ANM:{placa}] HTTP {resp.status_code} | página {page} | filas: {len(rows)}")
-            if not rows:
-                break
-
-            for i, row in enumerate(rows):
-                time_m = re.search(r'<time[^>]+datetime="(\d{4}-\d{2}-\d{2})', row, re.IGNORECASE)
-                fecha = time_m.group(1) if time_m else None
-                row_text = re.sub(r'<[^>]+>', ' ', row)
-                row_text = re.sub(r'\s+', ' ', row_text).strip().lower()
-
-                if placa_re.search(row_text):
-                    print(f"[ANM:{placa}] p{page}/f{i} COINCIDE | fecha={fecha!r} | texto: {row_text[:300]}")
-                    if fecha:
-                        avisos.append(fecha)
-                else:
-                    if i < 5:
-                        print(f"[ANM:{placa}] p{page}/f{i} texto: {row_text[:500]}")
-
-            page += 1
+            if placa_re.search(row_text):
+                print(f"[ANM:{placa}] Fila {i} COINCIDE | fecha={fecha!r} | texto: {row_text[:300]}")
+                if fecha:
+                    avisos.append(fecha)
+            else:
+                if i < 5:
+                    print(f"[ANM:{placa}] Fila {i} texto: {row_text[:500]}")
 
         tiene = len(avisos) > 0
-        print(f"[ANM:{placa}] total páginas={page} | avisos={avisos} | tiene_notificacion={tiene}")
+        print(f"[ANM:{placa}] avisos={avisos} | tiene_notificacion={tiene}")
         return {"tiene_notificacion": tiene, "avisos": avisos, "error": None}
     except Exception as e:
         print(f"[ANM:{placa}] Error: {e}")
