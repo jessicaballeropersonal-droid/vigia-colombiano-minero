@@ -12,11 +12,14 @@ import random
 import string
 import re
 import requests
+import logging
 from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 import os
 import urllib3
 urllib3.disable_warnings()
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 # ===================== CONFIG =====================
 SUPABASE_URL    = os.getenv("SUPABASE_URL", "https://xxxx.supabase.co")
@@ -285,29 +288,31 @@ def consultar_anm(placa: str) -> dict:
 
         tbody_m = re.search(r'<tbody>(.*?)</tbody>', resp.text, re.DOTALL | re.IGNORECASE)
         if not tbody_m:
-            print(f"[ANM:{placa}] No <tbody> en respuesta (HTTP {resp.status_code})")
+            logging.info(f"[ANM:{placa}] No <tbody> en respuesta (HTTP {resp.status_code})")
             return {"tiene_notificacion": False, "avisos": [], "error": None}
 
         rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbody_m.group(1), re.DOTALL | re.IGNORECASE)
-        print(f"[ANM:{placa}] HTTP {resp.status_code} | filas en tbody: {len(rows)}")
+        logging.info(f"[ANM:{placa}] HTTP {resp.status_code} | filas en tbody: {len(rows)}")
 
         avisos = []
         for i, row in enumerate(rows):
             time_m = re.search(r'<time[^>]+datetime="(\d{4}-\d{2}-\d{2})', row, re.IGNORECASE)
             fecha = time_m.group(1) if time_m else None
+            # regex runs on full row_text; logging chunks it to avoid line truncation
             row_text = re.sub(r'<[^>]+>', ' ', row)
             row_text = re.sub(r'\s+', ' ', row_text).strip().lower()
 
-            if placa_re.search(row_text):
-                print(f"[ANM:{placa}] Fila {i} COINCIDE | fecha={fecha!r} | texto: {row_text[:300]}")
-                if fecha:
-                    avisos.append(fecha)
-            else:
-                if i < 5:
-                    print(f"[ANM:{placa}] Fila {i} texto: {row_text[:500]}")
+            coincide = bool(placa_re.search(row_text))
+            for chunk_start in range(0, len(row_text), 200):
+                chunk = row_text[chunk_start:chunk_start + 200]
+                tag = "COINCIDE" if coincide else f"f{i}"
+                logging.info(f"[ANM:{placa}] {tag} [{chunk_start}:{chunk_start+200}] {chunk}")
+
+            if coincide and fecha:
+                avisos.append(fecha)
 
         tiene = len(avisos) > 0
-        print(f"[ANM:{placa}] avisos={avisos} | tiene_notificacion={tiene}")
+        logging.info(f"[ANM:{placa}] avisos={avisos} | tiene_notificacion={tiene}")
         return {"tiene_notificacion": tiene, "avisos": avisos, "error": None}
     except Exception as e:
         print(f"[ANM:{placa}] Error: {e}")
