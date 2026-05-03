@@ -283,33 +283,34 @@ def consultar_anm(placa: str) -> dict:
             re.IGNORECASE
         )
 
-        params = {"field_numero_titulo_value": placa}
-        resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
-
-        tbody_m = re.search(r'<tbody>(.*?)</tbody>', resp.text, re.DOTALL | re.IGNORECASE)
-        if not tbody_m:
-            logging.info(f"[ANM:{placa}] No <tbody> en respuesta (HTTP {resp.status_code})")
-            return {"tiene_notificacion": False, "avisos": [], "error": None}
-
-        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbody_m.group(1), re.DOTALL | re.IGNORECASE)
-        logging.info(f"[ANM:{placa}] HTTP {resp.status_code} | filas en tbody: {len(rows)}")
-
         avisos = []
-        for i, row in enumerate(rows):
-            time_m = re.search(r'<time[^>]+datetime="(\d{4}-\d{2}-\d{2})', row, re.IGNORECASE)
-            fecha = time_m.group(1) if time_m else None
-            # regex runs on full row_text; logging chunks it to avoid line truncation
-            row_text = re.sub(r'<[^>]+>', ' ', row)
-            row_text = re.sub(r'\s+', ' ', row_text).strip().lower()
+        MAX_PAGES = 3
+        for page in range(MAX_PAGES):
+            params = {"field_numero_titulo_value": placa, "page": page}
+            resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=8)
 
-            coincide = bool(placa_re.search(row_text))
-            for chunk_start in range(0, len(row_text), 200):
-                chunk = row_text[chunk_start:chunk_start + 200]
-                tag = "COINCIDE" if coincide else f"f{i}"
-                logging.info(f"[ANM:{placa}] {tag} [{chunk_start}:{chunk_start+200}] {chunk}")
+            tbody_m = re.search(r'<tbody>(.*?)</tbody>', resp.text, re.DOTALL | re.IGNORECASE)
+            if not tbody_m:
+                logging.info(f"[ANM:{placa}] página {page} — sin <tbody>, fin")
+                break
 
-            if coincide and fecha:
-                avisos.append(fecha)
+            rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbody_m.group(1), re.DOTALL | re.IGNORECASE)
+            logging.info(f"[ANM:{placa}] HTTP {resp.status_code} | página {page} | filas: {len(rows)}")
+            if not rows:
+                break
+
+            for i, row in enumerate(rows):
+                time_m = re.search(r'<time[^>]+datetime="(\d{4}-\d{2}-\d{2})', row, re.IGNORECASE)
+                fecha = time_m.group(1) if time_m else None
+                row_text = re.sub(r'<[^>]+>', ' ', row)
+                row_text = re.sub(r'\s+', ' ', row_text).strip().lower()
+
+                coincide = bool(placa_re.search(row_text))
+                for j in range(0, len(row_text), 200):
+                    logging.info(f"[ANM:{placa}] p{page}/f{i} {'COINCIDE' if coincide else '      '} [{j}] {row_text[j:j+200]}")
+
+                if coincide and fecha:
+                    avisos.append(fecha)
 
         tiene = len(avisos) > 0
         logging.info(f"[ANM:{placa}] avisos={avisos} | tiene_notificacion={tiene}")
