@@ -306,8 +306,8 @@ def consultar_anm(placa: str) -> dict:
                 if fecha:
                     avisos.append(fecha)
             else:
-                if i < 5:
-                    print(f"[ANM:{placa}] Fila {i} texto: {row_text[:200]}")
+                if i < 10:
+                    print(f"[ANM:{placa}] Fila {i} texto: {row_text[:500]}")
 
         tiene = len(avisos) > 0
         print(f"[ANM:{placa}] avisos={avisos} | tiene_notificacion={tiene}")
