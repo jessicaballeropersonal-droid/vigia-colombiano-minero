@@ -112,7 +112,7 @@
   <div class="section active" id="tab-dashboard">
     <div class="grid-3">
       <div class="stat-card"><div class="card-label">Mis placas activas</div><div class="card-value blue" id="stat-total">0</div><div style="font-size:0.72rem;color:#334155;margin-top:0.3rem;">en monitoreo</div></div>
-      <div class="stat-card"><div class="card-label">Notificaciones hoy</div><div class="card-value amber" id="stat-today">0</div><div style="font-size:0.72rem;color:#334155;margin-top:0.3rem;">detectadas</div></div>
+      <div class="stat-card"><div class="card-label">Alertas activas</div><div class="card-value amber" id="stat-today">0</div><div style="font-size:0.72rem;color:#334155;margin-top:0.3rem;">sin revisar</div></div>
       <div class="stat-card"><div class="card-label">Última consulta</div><div class="card-value green" id="stat-last">—</div><div style="font-size:0.72rem;color:#334155;margin-top:0.3rem;" id="stat-next">próxima: —</div></div>
     </div>
     <div class="panel">
@@ -409,9 +409,8 @@ async function runCheckNow(){
 // ── STATS ────────────────────────────────────────────────
 function updateStats(){
   document.getElementById('stat-total').textContent = placas.length;
-  const today = new Date().toISOString().slice(0,10);
-  const hoy   = alertas.filter(a => a.creado_en && a.creado_en.slice(0,10) === today && !a.revisado).length;
-  document.getElementById('stat-today').textContent = hoy;
+  const activas = alertas.filter(a => !a.revisado).length;
+  document.getElementById('stat-today').textContent = activas;
   const ultimas = placas.map(p => p.ultima_consulta).filter(Boolean).sort().reverse();
   document.getElementById('stat-last').textContent = ultimas[0]
     ? new Date(ultimas[0]).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})
