@@ -9,6 +9,7 @@ import re
 from datetime import datetime
 import os
 import urllib3
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 urllib3.disable_warnings()
 
 # ===================== CONFIG =====================
@@ -81,34 +82,44 @@ def _extraer_fecha_fila(row_text: str):
 
 
 def consultar_anm(placa: str) -> dict:
+    url = (
+        f"{ANM_URL}?field_punto_de_atencion_regional_value=All"
+        f"&field_fecha_de_publicacion_o_fij_value="
+        f"&field_mes_liberacion_de_area_value=All"
+        f"&field_numero_titulo_value={placa}"
+    )
+    placa_re = re.compile(
+        r'(?<![0-9A-Za-z-])' + re.escape(placa.strip()) + r'(?![0-9A-Za-z-])',
+        re.IGNORECASE
+    )
     try:
-        hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        params = {
-            "field_punto_de_atencion_regional_value": "All",
-            "field_fecha_de_publicacion_o_fij_value": "",
-            "field_mes_liberacion_de_area_value": "All",
-            "field_numero_titulo_value": placa,
-        }
-        resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage"]
+            )
+            page = browser.new_page()
+            page.goto(url, timeout=30000)
+            try:
+                page.wait_for_selector("table tbody tr", timeout=15000)
+            except PlaywrightTimeoutError:
+                print(f"  [{placa}] Timeout esperando tabla — sin resultados")
+                browser.close()
+                return {"tiene": False, "avisos": []}
 
-        placa_re = re.compile(
-            r'(?<![0-9A-Za-z-])' + re.escape(placa.strip()) + r'(?![0-9A-Za-z-])',
-            re.IGNORECASE
-        )
-
-        # Collect ALL rows with plate + real date. No date = not a valid aviso.
-        avisos = []
-        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', resp.text, re.DOTALL | re.IGNORECASE)
-        for row in rows:
-            row_text = re.sub(r'<[^>]+>', ' ', row).lower()
-            if placa_re.search(row_text):
-                fecha = _extraer_fecha_fila(row_text)
-                if fecha:
-                    avisos.append(fecha)
+            rows = page.query_selector_all("table tbody tr")
+            avisos = []
+            for row in rows:
+                row_text = row.inner_text().lower()
+                if placa_re.search(row_text):
+                    fecha = _extraer_fecha_fila(row_text)
+                    if fecha:
+                        avisos.append(fecha)
+            browser.close()
 
         return {"tiene": len(avisos) > 0, "avisos": avisos}
     except Exception as e:
-        print(f"  Error consultando ANM: {e}")
+        print(f"  Error consultando ANM [{placa}]: {e}")
         return {"tiene": False, "avisos": []}
 
 # ===================== MAIN =====================
