@@ -70,32 +70,34 @@ def enviar_whatsapp(telefono: str, mensaje: str) -> bool:
 def consultar_anm(placa: str) -> dict:
     try:
         hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        params = {
-            "field_punto_de_atencion_regional_value": "All",
-            "field_fecha_de_publicacion_o_fij_value": "",
-            "field_mes_liberacion_de_area_value": "All",
-            "field_numero_titulo_value": placa,
-        }
-        resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
-
         placa_re = re.compile(
             r'(?<![0-9A-Za-z-])' + re.escape(placa.strip()) + r'(?![0-9A-Za-z-])',
             re.IGNORECASE
         )
 
-        tbody_m = re.search(r'<tbody>(.*?)</tbody>', resp.text, re.DOTALL | re.IGNORECASE)
-        if not tbody_m:
-            return {"tiene": False, "avisos": []}
-
-        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbody_m.group(1), re.DOTALL | re.IGNORECASE)
         avisos = []
-        for row in rows:
-            time_m = re.search(r'<time[^>]+datetime="(\d{4}-\d{2}-\d{2})', row, re.IGNORECASE)
-            fecha = time_m.group(1) if time_m else None
-            row_text = re.sub(r'<[^>]+>', ' ', row)
-            row_text = re.sub(r'\s+', ' ', row_text).strip().lower()
-            if placa_re.search(row_text) and fecha:
-                avisos.append(fecha)
+        page = 0
+        while True:
+            params = {"field_numero_titulo_value": placa, "page": page}
+            resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
+
+            tbody_m = re.search(r'<tbody>(.*?)</tbody>', resp.text, re.DOTALL | re.IGNORECASE)
+            if not tbody_m:
+                break
+
+            rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbody_m.group(1), re.DOTALL | re.IGNORECASE)
+            if not rows:
+                break
+
+            for row in rows:
+                time_m = re.search(r'<time[^>]+datetime="(\d{4}-\d{2}-\d{2})', row, re.IGNORECASE)
+                fecha = time_m.group(1) if time_m else None
+                row_text = re.sub(r'<[^>]+>', ' ', row)
+                row_text = re.sub(r'\s+', ' ', row_text).strip().lower()
+                if placa_re.search(row_text) and fecha:
+                    avisos.append(fecha)
+
+            page += 1
 
         return {"tiene": len(avisos) > 0, "avisos": avisos}
     except Exception as e:
