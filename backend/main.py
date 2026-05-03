@@ -292,10 +292,10 @@ def consultar_anm(placa: str) -> dict:
         }
         resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
 
-        # Normalize plate: strip separators, build pattern allowing space, dot OR hyphen between chars
-        placa_digits = re.sub(r'[\s.\-]', '', placa.strip().lower())
-        placa_pattern = r'[\s.\-]?'.join(re.escape(c) for c in placa_digits)
-        placa_re = re.compile(r'(?<![0-9a-zA-Z\-])' + placa_pattern + r'(?![0-9a-zA-Z\-])')
+        placa_re = re.compile(
+            r'(?<![0-9A-Za-z-])' + re.escape(placa.strip()) + r'(?![0-9A-Za-z-])',
+            re.IGNORECASE
+        )
 
         avisos = []
         rows = re.findall(r'<tr[^>]*>(.*?)</tr>', resp.text, re.DOTALL | re.IGNORECASE)
@@ -305,11 +305,10 @@ def consultar_anm(placa: str) -> dict:
             row_text = re.sub(r'<[^>]+>', ' ', row).lower()
             if placa_re.search(row_text):
                 fecha = _extraer_fecha_fila(row_text)
-                print(f"[ANM:{placa}] Fila {i} COINCIDE con placa | fecha_extraida={fecha!r} | texto: {row_text[:400]}")
+                print(f"[ANM:{placa}] Fila {i} COINCIDE | fecha_extraida={fecha!r} | texto: {row_text[:400]}")
                 if fecha:
                     avisos.append(fecha)
             else:
-                # Print first 5 non-matching rows to see the table structure
                 if i < 5:
                     print(f"[ANM:{placa}] Fila {i} (no coincide): {row_text[:150]}")
 
