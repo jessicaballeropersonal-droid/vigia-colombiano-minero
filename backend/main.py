@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 import os
 import urllib3
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 urllib3.disable_warnings()
 
 # ===================== CONFIG =====================
@@ -282,41 +283,51 @@ def _extraer_fecha_fila(row_text: str) -> str | None:
 
 
 def consultar_anm(placa: str) -> dict:
+    url = (
+        f"{ANM_URL}?field_punto_de_atencion_regional_value=All"
+        f"&field_fecha_de_publicacion_o_fij_value="
+        f"&field_mes_liberacion_de_area_value=All"
+        f"&field_numero_titulo_value={placa}"
+    )
+    placa_re = re.compile(
+        r'(?<![0-9A-Za-z-])' + re.escape(placa.strip()) + r'(?![0-9A-Za-z-])',
+        re.IGNORECASE
+    )
     try:
-        hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        params = {
-            "field_punto_de_atencion_regional_value": "All",
-            "field_fecha_de_publicacion_o_fij_value": "",
-            "field_mes_liberacion_de_area_value": "All",
-            "field_numero_titulo_value": placa,
-        }
-        resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage"]
+            )
+            page = browser.new_page()
+            page.goto(url, timeout=30000)
+            try:
+                page.wait_for_selector("table tbody tr", timeout=15000)
+            except PlaywrightTimeoutError:
+                print(f"[ANM:{placa}] Timeout esperando tabla — sin resultados")
+                browser.close()
+                return {"tiene_notificacion": False, "avisos": [], "error": None}
 
-        placa_re = re.compile(
-            r'(?<![0-9A-Za-z-])' + re.escape(placa.strip()) + r'(?![0-9A-Za-z-])',
-            re.IGNORECASE
-        )
-
-        avisos = []
-        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', resp.text, re.DOTALL | re.IGNORECASE)
-        print(f"[ANM:{placa}] HTTP {resp.status_code} | total <tr> encontrados: {len(rows)}")
-
-        for i, row in enumerate(rows):
-            row_text = re.sub(r'<[^>]+>', ' ', row).lower()
-            if placa_re.search(row_text):
-                fecha = _extraer_fecha_fila(row_text)
-                print(f"[ANM:{placa}] Fila {i} COINCIDE | fecha_extraida={fecha!r} | texto: {row_text[:400]}")
-                if fecha:
-                    avisos.append(fecha)
-            else:
-                if i < 10:
-                    print(f"[ANM:{placa}] Fila {i} texto: {row_text[:200]}")
+            rows = page.query_selector_all("table tbody tr")
+            print(f"[ANM:{placa}] Filas encontradas en tabla: {len(rows)}")
+            avisos = []
+            for i, row in enumerate(rows):
+                row_text = row.inner_text().lower()
+                if placa_re.search(row_text):
+                    fecha = _extraer_fecha_fila(row_text)
+                    print(f"[ANM:{placa}] Fila {i} COINCIDE | fecha={fecha!r} | texto: {row_text[:300]}")
+                    if fecha:
+                        avisos.append(fecha)
+                else:
+                    if i < 5:
+                        print(f"[ANM:{placa}] Fila {i} texto: {row_text[:200]}")
+            browser.close()
 
         tiene = len(avisos) > 0
         print(f"[ANM:{placa}] avisos={avisos} | tiene_notificacion={tiene}")
-
         return {"tiene_notificacion": tiene, "avisos": avisos, "error": None}
     except Exception as e:
+        print(f"[ANM:{placa}] Error: {e}")
         return {"tiene_notificacion": False, "avisos": [], "error": str(e)}
 
 @app.post("/consultar")
