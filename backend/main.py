@@ -297,22 +297,24 @@ def consultar_anm(placa: str) -> dict:
         placa_pattern = r'[\s.\-]?'.join(re.escape(c) for c in placa_digits)
         placa_re = re.compile(r'(?<![0-9a-zA-Z\-])' + placa_pattern + r'(?![0-9a-zA-Z\-])')
 
-        # Collect ALL rows that contain the plate AND have a real date.
-        # Only rows with an extracted date are considered valid avisos.
-        # This prevents false positives (plate found in row without publication date)
-        # and never falls back to datetime.now().
         avisos = []
         rows = re.findall(r'<tr[^>]*>(.*?)</tr>', resp.text, re.DOTALL | re.IGNORECASE)
-        for row in rows:
+        print(f"[ANM:{placa}] HTTP {resp.status_code} | total <tr> encontrados: {len(rows)}")
+
+        for i, row in enumerate(rows):
             row_text = re.sub(r'<[^>]+>', ' ', row).lower()
             if placa_re.search(row_text):
                 fecha = _extraer_fecha_fila(row_text)
+                print(f"[ANM:{placa}] Fila {i} COINCIDE con placa | fecha_extraida={fecha!r} | texto: {row_text[:400]}")
                 if fecha:
                     avisos.append(fecha)
-                    print(f"[ANM:{placa}] Aviso encontrado: fecha={fecha} | {row_text[:200]}")
+            else:
+                # Print first 5 non-matching rows to see the table structure
+                if i < 5:
+                    print(f"[ANM:{placa}] Fila {i} (no coincide): {row_text[:150]}")
 
         tiene = len(avisos) > 0
-        print(f"[ANM:{placa}] HTTP {resp.status_code} | avisos={avisos} | tiene_notificacion={tiene}")
+        print(f"[ANM:{placa}] avisos={avisos} | tiene_notificacion={tiene}")
 
         return {"tiene_notificacion": tiene, "avisos": avisos, "error": None}
     except Exception as e:
