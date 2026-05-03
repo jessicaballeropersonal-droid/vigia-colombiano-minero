@@ -80,22 +80,27 @@ def consultar_anm(placa: str) -> dict:
             re.IGNORECASE
         )
 
-        params = {"field_numero_titulo_value": placa}
-        resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
-
-        tbody_m = re.search(r'<tbody>(.*?)</tbody>', resp.text, re.DOTALL | re.IGNORECASE)
-        if not tbody_m:
-            return {"tiene": False, "avisos": []}
-
-        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbody_m.group(1), re.DOTALL | re.IGNORECASE)
         avisos = []
-        for row in rows:
-            time_m = re.search(r'<time[^>]+datetime="(\d{4}-\d{2}-\d{2})', row, re.IGNORECASE)
-            fecha = time_m.group(1) if time_m else None
-            row_text = re.sub(r'<[^>]+>', ' ', row)
-            row_text = re.sub(r'\s+', ' ', row_text).strip().lower()
-            if placa_re.search(row_text) and fecha:
-                avisos.append(fecha)
+        MAX_PAGES = 3
+        for page in range(MAX_PAGES):
+            params = {"field_numero_titulo_value": placa, "page": page}
+            resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=8)
+
+            tbody_m = re.search(r'<tbody>(.*?)</tbody>', resp.text, re.DOTALL | re.IGNORECASE)
+            if not tbody_m:
+                break
+
+            rows = re.findall(r'<tr[^>]*>(.*?)</tr>', tbody_m.group(1), re.DOTALL | re.IGNORECASE)
+            if not rows:
+                break
+
+            for row in rows:
+                time_m = re.search(r'<time[^>]+datetime="(\d{4}-\d{2}-\d{2})', row, re.IGNORECASE)
+                fecha = time_m.group(1) if time_m else None
+                row_text = re.sub(r'<[^>]+>', ' ', row)
+                row_text = re.sub(r'\s+', ' ', row_text).strip().lower()
+                if placa_re.search(row_text) and fecha:
+                    avisos.append(fecha)
 
         return {"tiene": len(avisos) > 0, "avisos": avisos}
     except Exception as e:
