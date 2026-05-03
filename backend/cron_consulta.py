@@ -91,9 +91,10 @@ def consultar_anm(placa: str) -> dict:
         }
         resp = requests.get(ANM_URL, params=params, headers=hdrs, verify=False, timeout=15)
 
-        placa_digits = re.sub(r'[\s.\-]', '', placa.strip().lower())
-        placa_pattern = r'[\s.\-]?'.join(re.escape(c) for c in placa_digits)
-        placa_re = re.compile(r'(?<![0-9a-zA-Z\-])' + placa_pattern + r'(?![0-9a-zA-Z\-])')
+        placa_re = re.compile(
+            r'(?<![0-9A-Za-z-])' + re.escape(placa.strip()) + r'(?![0-9A-Za-z-])',
+            re.IGNORECASE
+        )
 
         # Collect ALL rows with plate + real date. No date = not a valid aviso.
         avisos = []
