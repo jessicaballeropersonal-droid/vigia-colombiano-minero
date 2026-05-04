@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#1d6fa4"/>
+  <!-- pickaxe handle -->
+  <rect x="235" y="260" width="40" height="160" rx="10" fill="#ffffff" transform="rotate(-45 256 256)"/>
+  <!-- pickaxe head -->
+  <path d="M160 140 C160 100 200 80 256 80 C312 80 352 100 352 140 L320 172 C320 152 294 140 256 140 C218 140 192 152 192 172 Z" fill="#ffffff"/>
+  <path d="M192 172 L224 204 L288 204 L320 172" fill="#ffffff"/>
+</svg>
