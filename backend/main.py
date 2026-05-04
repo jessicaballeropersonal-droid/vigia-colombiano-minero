@@ -3,11 +3,14 @@ Monitor ANM - Backend completo
 Compatible con Python 3.14+. Sin SDK supabase ni httpx.
 """
 
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from passlib.context import CryptContext
 from twilio.rest import Client as TwilioClient
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import random
 import string
 import re
@@ -24,12 +27,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 # ===================== CONFIG =====================
 SUPABASE_URL    = os.getenv("SUPABASE_URL", "https://xxxx.supabase.co")
 SUPABASE_KEY    = os.getenv("SUPABASE_KEY", "tu-anon-key")
-JWT_SECRET      = os.getenv("JWT_SECRET", "cambia-este-secreto-muy-largo-123!")
+_JWT_DEFAULT    = "9f4e2b1c8d7a6e5f3c2b1a0e9d8c7b6a5f4e3d2c1b0a9e8d7c6b5a4f3e2d1c0"
+JWT_SECRET      = os.getenv("JWT_SECRET", _JWT_DEFAULT)
 JWT_EXPIRE_DAYS = 30
 TWILIO_SID      = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_TOKEN    = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM     = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
 ANM_URL         = "https://www.anm.gov.co/notificaciones-por-avisos"
+
+if JWT_SECRET == _JWT_DEFAULT:
+    logging.warning("JWT_SECRET está usando el valor por defecto. Configura la variable de entorno JWT_SECRET en producción.")
 
 # ===================== SUPABASE REST API =====================
 def _sb_url(table: str) -> str:
@@ -65,12 +72,15 @@ def sb_delete(table: str, filters: dict):
     r.raise_for_status()
 
 # ===================== APP =====================
+limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Monitor ANM API")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["https://vigia-minero-app.vercel.app"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -127,8 +137,8 @@ def generar_password_temporal() -> str:
     return ''.join(random.choices(string.ascii_letters + string.digits, k=10))
 
 def enviar_whatsapp(telefono: str, mensaje: str) -> bool:
-    print(f"[Twilio] SID={TWILIO_SID[:5] if TWILIO_SID else 'VACIO'} TOKEN={TWILIO_TOKEN[:5] if TWILIO_TOKEN else 'VACIO'} FROM={TWILIO_FROM}")
-    print(f"[Twilio] Mensaje a enviar: '{mensaje}'")
+    logging.info(f"[Twilio] SID={'*' * 5 + TWILIO_SID[-4:] if len(TWILIO_SID) > 4 else 'VACIO'} FROM={TWILIO_FROM}")
+    logging.info(f"[Twilio] Enviando a {telefono}: {mensaje[:80]}")
     to = telefono if telefono.startswith("whatsapp:") else \
          f"whatsapp:{telefono if telefono.startswith('+') else '+' + telefono}"
     try:
@@ -165,7 +175,8 @@ async def send_code(body: SendCodeModel):
     return {"ok": True}
 
 @app.post("/auth/register")
-async def register(body: RegisterModel):
+@limiter.limit("5/hour")
+async def register(request: Request, body: RegisterModel):
     rows = sb_select("codigos_verificacion", {
         "select": "*", "telefono": f"eq.{body.phone}",
         "codigo": f"eq.{body.codigo}", "usado": "eq.false"
@@ -196,7 +207,8 @@ async def register(body: RegisterModel):
     }
 
 @app.post("/auth/login")
-async def login(body: LoginModel):
+@limiter.limit("10/hour")
+async def login(request: Request, body: LoginModel):
     rows = sb_select("usuarios", {"select": "*", "telefono": f"eq.{body.phone}"})
     if not rows or not verify_password(body.password, rows[0]["password_hash"]):
         raise HTTPException(status_code=401, detail="Número o contraseña incorrectos.")
@@ -326,7 +338,8 @@ def consultar_anm(placa: str) -> dict:
         return {"tiene_notificacion": False, "avisos": [], "error": str(e)}
 
 @app.post("/consultar")
-async def consultar_todas(user_id: str = Depends(get_user_id)):
+@limiter.limit("20/hour")
+async def consultar_todas(request: Request, user_id: str = Depends(get_user_id)):
     placas = sb_select("placas", {"select": "*", "usuario_id": f"eq.{user_id}"})
     resultados = []
     ahora = datetime.now().isoformat()
