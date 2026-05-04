@@ -293,7 +293,7 @@ function renderPlacasTable(){
     <tbody>${placas.map(p => `<tr>
       <td><span class="placa-tag">${p.placa}</span></td>
       <td><div class="owner-cell"><div class="owner-avatar">${initials(p.nombre)}</div><div><div class="owner-name">${p.nombre}</div><div class="owner-phone">${p.celular}</div></div></div></td>
-      <td><span class="badge ${p.estado==='activa'?'badge-green':p.estado==='alerta'?'badge-amber':'badge-gray'}"><span class="badge-dot"></span>${p.estado}</span></td>
+      <td>${(()=>{ const hay = alertas.some(a=>a.placa===p.placa && !a.revisado); const e = hay?'alerta':'activa'; return `<span class="badge ${hay?'badge-amber':'badge-green'}"><span class="badge-dot"></span>${e}</span>`; })()}</td>
       <td style="color:#64748b;font-size:0.8rem;">${p.ultima_consulta ? new Date(p.ultima_consulta).toLocaleString('es-CO') : '—'}</td>
       <td style="color:${p.fecha_notificacion?'#f59e0b':'#334155'};font-size:0.8rem;font-weight:${p.fecha_notificacion?'600':'400'};">${p.fecha_notificacion||'—'}</td>
       <td><button class="btn btn-danger" onclick="removePlaca('${p.id}')">✕</button></td>
@@ -309,6 +309,7 @@ async function loadAlertas(){
     alertas = await res.json();
     renderAlertasList();
     updateStats();
+    renderPlacasTable();
   } catch(e) {
     console.error('Error cargando alertas:', e);
   }
