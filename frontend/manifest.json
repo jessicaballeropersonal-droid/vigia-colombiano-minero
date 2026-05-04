@@ -1,0 +1,18 @@
+{
+  "name": "Monitor ANM",
+  "short_name": "Monitor ANM",
+  "description": "Monitoreo de avisos mineros ANM Colombia",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1923",
+  "theme_color": "#1a3a5c",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
